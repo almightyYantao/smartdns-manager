@@ -22,7 +22,7 @@ RUN npm run build
 # ============================================
 FROM golang:1.21-alpine AS backend-builder
 
-WORKDIR /build
+WORKDIR /backend
 
 # 安装构建依赖
 RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
