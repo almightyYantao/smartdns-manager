@@ -6,13 +6,13 @@ FROM node:18-alpine AS frontend-builder
 WORKDIR /frontend
 
 # 复制前端依赖文件
-COPY frontend/package*.json ./
+COPY ui/package*.json ./
 
 # 安装依赖
 RUN npm ci --production=false
 
 # 复制前端源码
-COPY frontend/ ./
+COPY ui/ ./
 
 # 构建生产版本
 RUN npm run build
@@ -22,19 +22,19 @@ RUN npm run build
 # ============================================
 FROM golang:1.21-alpine AS backend-builder
 
-WORKDIR /backend
+WORKDIR /build
 
 # 安装构建依赖
 RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
 
 # 复制 Go 依赖文件
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 
 # 下载依赖
 RUN go mod download
 
 # 复制后端源码
-COPY . .
+COPY backend/ ./
 
 # 编译 Go 程序
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo \
@@ -69,7 +69,7 @@ COPY --from=backend-builder /build/smartdns-manager /app/
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
-# 暴露端口（只需要暴露 Nginx 的 80 端口）
+# 暴露端口
 EXPOSE 80
 
 # 使用 Supervisor 管理多进程
