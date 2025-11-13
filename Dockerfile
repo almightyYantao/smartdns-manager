@@ -56,7 +56,7 @@ RUN addgroup -g 1000 smartdns && \
     adduser -D -u 1000 -G smartdns smartdns
 
 # 创建必要的目录
-RUN mkdir -p /app/data /app/logs && \
+RUN mkdir -p /app/data /app/logs /var/log/supervisor && \
     chown -R smartdns:smartdns /app
 
 # 复制前端构建产物到 Nginx 目录

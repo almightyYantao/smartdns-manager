@@ -1,55 +1,26 @@
 version: '3.8'
 
 services:
-  # 后端服务
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: smartdns-backend
+  smartdns-manager:
+    image: ghcr.nju.edu.cn/almightyyantao/smartdns-manager:latest
+    container_name: smartdns-manager
     restart: unless-stopped
     ports:
-      - "3001:3001"
-    environment:
-      - SERVER_PORT=3001
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
-      - DB_PATH=/app/data/smartdns.db
-      - GIN_MODE=release
+      - "80:80"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-    networks:
-      - smartdns-network
+    environment:
+      - TZ=Asia/Shanghai
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # 前端服务
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: smartdns-frontend
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
     networks:
       - smartdns-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 networks:
   smartdns-network:
     driver: bridge
-
-volumes:
-  data:
-  logs:
