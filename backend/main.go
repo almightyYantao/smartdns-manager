@@ -38,6 +38,7 @@ func main() {
 	// 需要认证的路由
 	protected := r.Group("/api")
 	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AdminRequired())
 	{
 		// 节点管理
 		protected.GET("/nodes", handlers.GetNodes)

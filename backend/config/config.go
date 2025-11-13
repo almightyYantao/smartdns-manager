@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 )
 
@@ -18,8 +19,12 @@ func GetConfig() *Config {
 		config = &Config{
 			ServerPort: getEnv("SERVER_PORT", "3001"),
 			JWTSecret:  getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
-			DBPath:     getEnv("DB_PATH", "smartdns.db"),
+			// 使用绝对路径，方便 Docker 挂载
+			DBPath: getEnv("DB_PATH", "/app/data/smartdns.db"),
 		}
+
+		// 打印配置信息（生产环境可以去掉敏感信息）
+		log.Printf("Config loaded - ServerPort: %s, DBPath: %s", config.ServerPort, config.DBPath)
 	}
 	return config
 }

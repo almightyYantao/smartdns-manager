@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"smartdns-manager/config"
 	"smartdns-manager/models"
 )
 
@@ -15,10 +16,13 @@ var DB *gorm.DB
 // InitDB 初始化数据库
 func InitDB() {
 	var err error
-	DB, err = gorm.Open(sqlite.Open("smartdns.db"), &gorm.Config{
+
+	// 使用配置中的数据库路径，而不是硬编码
+	dbPath := config.GetConfig().DBPath
+
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
-
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -37,7 +41,6 @@ func InitDB() {
 		&models.NotificationLog{},
 		&models.InitLog{},
 	)
-
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
@@ -48,5 +51,5 @@ func InitDB() {
 	DB.Model(&models.DNSServer{}).Where("node_ids IS NULL").Update("node_ids", "[]")
 	DB.Model(&models.DNSServer{}).Where("enabled IS NULL").Update("enabled", true)
 
-	log.Println("Database initialized successfully")
+	log.Printf("Database initialized successfully at: %s", dbPath)
 }
