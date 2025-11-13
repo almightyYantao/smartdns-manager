@@ -1,0 +1,86 @@
+# ==================== 通用 ====================
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.env
+.env.local
+.env.*.local
+*.log
+
+# ==================== 后端 (Go) ====================
+# 编译输出
+backend/main
+backend/smartdns-manager
+backend/*.exe
+backend/*.exe~
+backend/*.dll
+backend/*.so
+backend/*.dylib
+
+# 测试输出
+backend/*.test
+backend/*.out
+
+# 依赖
+backend/vendor/
+
+# 数据库文件
+backend/*.db
+backend/*.db-journal
+backend/*.db-shm
+backend/*.db-wal
+backend/smartdns.db*
+
+# 日志文件
+backend/*.log
+backend/logs/
+
+# 临时文件
+backend/tmp/
+backend/temp/
+
+# Go 工作区
+backend/go.work
+backend/go.work.sum
+
+# ==================== 前端 (React) ====================
+# 依赖
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# 测试
+frontend/coverage/
+
+# 生产构建
+frontend/build/
+frontend/dist/
+
+# 其他
+frontend/.DS_Store
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# 日志
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/lerna-debug.log*
+
+# ==================== Docker ====================
+docker/data/
+docker/logs/
+
+# ==================== 部署 ====================
+deploy/secrets/
+deploy/certs/
+
+# ==================== 备份 ====================
+*.backup
+*.bak
+backups/

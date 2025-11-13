@@ -1,0 +1,278 @@
+package services
+
+import (
+	"fmt"
+	"regexp"
+	"smartdns-manager/models"
+	"strings"
+)
+
+type ConfigParser struct{}
+
+func NewConfigParser() *ConfigParser {
+	return &ConfigParser{}
+}
+
+func (p *ConfigParser) Parse(content string) (*models.SmartDNSConfig, error) {
+	config := &models.SmartDNSConfig{
+		Servers:       []models.DNSServer{},
+		Addresses:     []models.AddressMap{},
+		DomainSets:    []models.DomainSet{},
+		DomainRules:   []models.DomainRule{},
+		Nameservers:   []models.Nameserver{},
+		BasicSettings: make(map[string]string),
+	}
+
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// 跳过空行和注释
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 解析 server
+		if strings.HasPrefix(line, "server ") {
+			server := p.parseServer(line)
+			if server != nil {
+				config.Servers = append(config.Servers, *server)
+			}
+		}
+
+		// 解析 address
+		if strings.HasPrefix(line, "address /") {
+			address := p.parseAddress(line)
+			if address != nil {
+				config.Addresses = append(config.Addresses, *address)
+			}
+		}
+
+		// 解析 domain-set
+		if strings.HasPrefix(line, "domain-set ") {
+			domainSet := p.parseDomainSet(line)
+			if domainSet != nil {
+				config.DomainSets = append(config.DomainSets, *domainSet)
+			}
+		}
+
+		// 解析 domain-rules
+		if strings.HasPrefix(line, "domain-rules /") {
+			rule := p.parseDomainRule(line)
+			if rule != nil {
+				config.DomainRules = append(config.DomainRules, *rule)
+			}
+		}
+
+		// 解析 nameserver
+		if strings.HasPrefix(line, "nameserver /") {
+			ns := p.parseNameserver(line)
+			if ns != nil {
+				config.Nameservers = append(config.Nameservers, *ns)
+			}
+		}
+
+		// 解析基础设置
+		p.parseBasicSetting(line, config.BasicSettings)
+	}
+
+	return config, nil
+}
+
+func (p *ConfigParser) parseServer(line string) *models.DNSServer {
+	re := regexp.MustCompile(`server\s+(\S+)(?:\s+(.*))?`)
+	matches := re.FindStringSubmatch(line)
+
+	if len(matches) < 2 {
+		return nil
+	}
+
+	server := &models.DNSServer{
+		Address: matches[1],
+		Options: "",
+	}
+
+	if len(matches) > 2 {
+		options := matches[2]
+		server.Options = options
+
+		// 提取 groups
+		groupRe := regexp.MustCompile(`-group\s+(\S+)`)
+		groupMatches := groupRe.FindAllStringSubmatch(options, -1)
+		for _, m := range groupMatches {
+			server.Groups = append(server.Groups, m[1])
+		}
+
+		// 检查 exclude-default-group
+		server.ExcludeDefault = strings.Contains(options, "-exclude-default-group")
+	}
+
+	// 确定类型
+	if strings.HasPrefix(server.Address, "https://") {
+		server.Type = "https"
+	} else if strings.HasPrefix(server.Address, "tls://") {
+		server.Type = "tls"
+	} else {
+		server.Type = "udp"
+	}
+
+	return server
+}
+
+func (p *ConfigParser) parseAddress(line string) *models.AddressMap {
+	re := regexp.MustCompile(`address\s+/(.*?)/(.*)`)
+	matches := re.FindStringSubmatch(line)
+
+	if len(matches) != 3 {
+		return nil
+	}
+
+	return &models.AddressMap{
+		Domain: matches[1],
+		IP:     matches[2],
+	}
+}
+
+func (p *ConfigParser) parseDomainSet(line string) *models.DomainSet {
+	nameRe := regexp.MustCompile(`-name\s+(\S+)`)
+	fileRe := regexp.MustCompile(`-file\s+(\S+)`)
+
+	nameMatch := nameRe.FindStringSubmatch(line)
+	fileMatch := fileRe.FindStringSubmatch(line)
+
+	if len(nameMatch) < 2 {
+		return nil
+	}
+
+	ds := &models.DomainSet{
+		Name: nameMatch[1],
+	}
+
+	if len(fileMatch) > 1 {
+		ds.FilePath = fileMatch[1]
+	}
+
+	return ds
+}
+
+func (p *ConfigParser) parseDomainRule(line string) *models.DomainRule {
+	re := regexp.MustCompile(`domain-rules\s+/(.*?)/(.*)`)
+	matches := re.FindStringSubmatch(line)
+
+	if len(matches) != 3 {
+		return nil
+	}
+
+	rule := &models.DomainRule{
+		Domain:  matches[1],
+		Options: matches[2],
+	}
+
+	// 提取 nameserver
+	nsRe := regexp.MustCompile(`-nameserver\s+(\S+)`)
+	nsMatch := nsRe.FindStringSubmatch(rule.Options)
+	if len(nsMatch) > 1 {
+		rule.Nameserver = nsMatch[1]
+	}
+
+	return rule
+}
+
+func (p *ConfigParser) parseNameserver(line string) *models.Nameserver {
+	re := regexp.MustCompile(`nameserver\s+/(.*?)/(.*)`)
+	matches := re.FindStringSubmatch(line)
+
+	if len(matches) != 3 {
+		return nil
+	}
+
+	return &models.Nameserver{
+		Domain: matches[1],
+		Group:  matches[2],
+	}
+}
+
+func (p *ConfigParser) parseBasicSetting(line string, settings map[string]string) {
+	basicKeys := []string{
+		"bind", "cache-size", "prefetch-domain", "serve-expired",
+		"force-AAAA-SOA", "dualstack-ip-selection", "rr-ttl-min",
+		"rr-ttl-max", "log-level", "log-file", "log-size",
+		"audit-enable", "audit-num", "audit-size", "audit-file",
+	}
+
+	for _, key := range basicKeys {
+		if strings.HasPrefix(line, key+" ") || strings.HasPrefix(line, key+":") {
+			value := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, key), ":"))
+			settings[key] = strings.TrimSpace(value)
+			break
+		}
+	}
+}
+
+func (p *ConfigParser) Generate(config *models.SmartDNSConfig) string {
+	var builder strings.Builder
+
+	builder.WriteString("# SmartDNS Configuration\n")
+	builder.WriteString("# Auto-generated by SmartDNS Manager\n\n")
+
+	// 基础设置
+	if len(config.BasicSettings) > 0 {
+		builder.WriteString("# Basic Settings\n")
+		for key, value := range config.BasicSettings {
+			builder.WriteString(fmt.Sprintf("%s %s\n", key, value))
+		}
+		builder.WriteString("\n")
+	}
+
+	// DNS 服务器
+	if len(config.Servers) > 0 {
+		builder.WriteString("# DNS Servers\n")
+		for _, server := range config.Servers {
+			builder.WriteString(fmt.Sprintf("server %s", server.Address))
+			if server.Options != "" {
+				builder.WriteString(fmt.Sprintf(" %s", server.Options))
+			}
+			builder.WriteString("\n")
+		}
+		builder.WriteString("\n")
+	}
+
+	// 地址映射
+	if len(config.Addresses) > 0 {
+		builder.WriteString("# Address Mappings\n")
+		for _, addr := range config.Addresses {
+			builder.WriteString(fmt.Sprintf("address /%s/%s\n", addr.Domain, addr.IP))
+		}
+		builder.WriteString("\n")
+	}
+
+	// Domain Sets
+	if len(config.DomainSets) > 0 {
+		builder.WriteString("# Domain Sets\n")
+		for _, ds := range config.DomainSets {
+			builder.WriteString(fmt.Sprintf("domain-set -name %s -file %s\n", ds.Name, ds.FilePath))
+		}
+		builder.WriteString("\n")
+	}
+
+	// Domain Rules
+	if len(config.DomainRules) > 0 {
+		builder.WriteString("# Domain Rules\n")
+		for _, rule := range config.DomainRules {
+			builder.WriteString(fmt.Sprintf("domain-rules /%s/ %s\n", rule.Domain, rule.Options))
+		}
+		builder.WriteString("\n")
+	}
+
+	// Nameservers
+	if len(config.Nameservers) > 0 {
+		builder.WriteString("# Nameserver Rules\n")
+		for _, ns := range config.Nameservers {
+			builder.WriteString(fmt.Sprintf("nameserver /%s/%s\n", ns.Domain, ns.Group))
+		}
+		builder.WriteString("\n")
+	}
+
+	return builder.String()
+}
