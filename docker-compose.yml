@@ -2,13 +2,14 @@ version: '3.8'
 
 services:
   smartdns-manager:
-    image: ghcr.nju.edu.cn/almightyyantao/smartdns-manager:latest
+    image: ghcr.nju.edu.cn/almightyyantao/smartdns-manager:main
     container_name: smartdns-manager
     restart: unless-stopped
     ports:
       - "80:80"
     volumes:
       - ./data:/app/data
+      - ./data/smartdns.db:/app/smartdns.db
       - ./logs:/app/logs
     environment:
       - TZ=Asia/Shanghai
