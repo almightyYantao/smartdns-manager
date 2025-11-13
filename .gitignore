@@ -48,29 +48,29 @@ backend/go.work.sum
 
 # ==================== 前端 (React) ====================
 # 依赖
-frontend/node_modules/
-frontend/.pnp
-frontend/.pnp.js
+ui/node_modules/
+ui/.pnp
+ui/.pnp.js
 
 # 测试
-frontend/coverage/
+ui/coverage/
 
 # 生产构建
-frontend/build/
-frontend/dist/
+ui/build/
+ui/dist/
 
 # 其他
-frontend/.DS_Store
-frontend/.env.local
-frontend/.env.development.local
-frontend/.env.test.local
-frontend/.env.production.local
+ui/.DS_Store
+ui/.env.local
+ui/.env.development.local
+ui/.env.test.local
+ui/.env.production.local
 
 # 日志
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
-frontend/lerna-debug.log*
+ui/npm-debug.log*
+ui/yarn-debug.log*
+ui/yarn-error.log*
+ui/lerna-debug.log*
 
 # ==================== Docker ====================
 docker/data/
