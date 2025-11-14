@@ -3,6 +3,8 @@ package config
 import (
 	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -16,6 +18,11 @@ var config *Config
 // GetConfig 获取配置
 func GetConfig() *Config {
 	if config == nil {
+
+		if err := godotenv.Load(); err != nil {
+			log.Println("Warning: .env file not found, using defaults")
+		}
+
 		config = &Config{
 			ServerPort: getEnv("SERVER_PORT", "3001"),
 			JWTSecret:  getEnv("JWT_SECRET", "your-secret-key-change-in-production"),

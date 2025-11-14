@@ -331,32 +331,12 @@ func (s *ConfigSyncService) deleteAddressFromNode(address *models.AddressMap, no
 	return client.WriteFile(node.ConfigPath, newConfig)
 }
 
-// FullSyncToNode 完整同步所有配置到节点
 func (s *ConfigSyncService) FullSyncToNode(nodeID uint) error {
 	var node models.Node
 	if err := database.DB.First(&node, nodeID).Error; err != nil {
 		return err
 	}
-
 	log.Printf("开始完整同步配置到节点: %s", node.Name)
-
-	// 获取所有启用的地址映射
-	var addresses []models.AddressMap
-	database.DB.Where("enabled = ?", true).Find(&addresses)
-
-	// 过滤出应该应用到此节点的地址映射
-	targetAddresses := s.filterConfigForNode(addresses, nodeID)
-
-	// 获取所有启用的DNS服务器
-	var servers []models.DNSServer
-	database.DB.Where("enabled = ?", true).Find(&servers)
-	targetServers := s.filterServersForNode(servers, nodeID)
-
-	// 构建完整配置
-	config := &models.SmartDNSConfig{
-		Servers:   targetServers,
-		Addresses: targetAddresses,
-	}
 
 	// 连接节点
 	client, err := NewSSHClient(&node)
@@ -365,9 +345,30 @@ func (s *ConfigSyncService) FullSyncToNode(nodeID uint) error {
 	}
 	defer client.Close()
 
-	// 生成配置
+	// 读取现有配置
+	currentConfig, err := client.ReadFile(node.ConfigPath)
+	if err != nil {
+		return err
+	}
+
+	// 解析现有配置
 	parser := NewConfigParser()
-	newConfig := parser.Generate(config)
+	config, err := parser.Parse(currentConfig)
+	if err != nil {
+		return err
+	}
+
+	// 获取数据库中的配置
+	var dbAddresses []models.AddressMap
+	database.DB.Where("enabled = ?", true).Find(&dbAddresses)
+	targetAddresses := s.filterConfigForNode(dbAddresses, nodeID)
+
+	var dbServers []models.DNSServer
+	database.DB.Where("enabled = ?", true).Find(&dbServers)
+	targetServers := s.filterServersForNode(dbServers, nodeID)
+
+	// 合并配置：保留现有的，添加数据库中的
+	config = s.mergeConfigs(config, targetServers, targetAddresses)
 
 	// 创建备份
 	backupPath, err := client.CreateBackup(node.ConfigPath)
@@ -377,6 +378,9 @@ func (s *ConfigSyncService) FullSyncToNode(nodeID uint) error {
 		log.Printf("配置已备份到: %s", backupPath)
 	}
 
+	// 生成新配置
+	newConfig := parser.Generate(config)
+
 	// 写入配置
 	err = client.WriteFile(node.ConfigPath, newConfig)
 	if err != nil {
@@ -385,6 +389,47 @@ func (s *ConfigSyncService) FullSyncToNode(nodeID uint) error {
 
 	log.Printf("✅ 完整同步成功: %s", node.Name)
 	return nil
+}
+
+// 合并配置的辅助方法
+func (s *ConfigSyncService) mergeConfigs(existingConfig *models.SmartDNSConfig, dbServers []models.DNSServer, dbAddresses []models.AddressMap) *models.SmartDNSConfig {
+	// 合并服务器配置
+	for _, dbServer := range dbServers {
+		found := false
+		// 检查是否已存在（按地址匹配）
+		for i, existing := range existingConfig.Servers {
+			if existing.Address == dbServer.Address {
+				// 更新现有的
+				existingConfig.Servers[i] = dbServer
+				found = true
+				break
+			}
+		}
+		// 如果不存在，添加新的
+		if !found {
+			existingConfig.Servers = append(existingConfig.Servers, dbServer)
+		}
+	}
+
+	// 合并地址映射配置
+	for _, dbAddr := range dbAddresses {
+		found := false
+		// 检查是否已存在（按域名匹配）
+		for i, existing := range existingConfig.Addresses {
+			if existing.Domain == dbAddr.Domain {
+				// 更新现有的
+				existingConfig.Addresses[i] = dbAddr
+				found = true
+				break
+			}
+		}
+		// 如果不存在，添加新的
+		if !found {
+			existingConfig.Addresses = append(existingConfig.Addresses, dbAddr)
+		}
+	}
+
+	return existingConfig
 }
 
 // getTargetNodes 获取目标节点列表

@@ -102,6 +102,33 @@ func main() {
 		// 统计信息
 		protected.GET("/dashboard/stats", handlers.GetDashboardStats)
 		protected.GET("/dashboard/health", handlers.GetNodesHealth)
+
+		// ========== 域名集管理 ==========
+		protected.GET("/domain-sets", handlers.GetDomainSets)
+		protected.GET("/domain-sets/:id", handlers.GetDomainSet)
+		protected.POST("/domain-sets", handlers.AddDomainSet)
+		protected.PUT("/domain-sets/:id", handlers.UpdateDomainSet)
+		protected.DELETE("/domain-sets/:id", handlers.DeleteDomainSet)
+		protected.POST("/domain-sets/:id/import", handlers.ImportDomainSetFile)
+		protected.GET("/domain-sets/:id/export", handlers.ExportDomainSet)
+
+		// ========== 域名规则管理 ==========
+		protected.GET("/domain-rules", handlers.GetDomainRules)
+		protected.POST("/domain-rules", handlers.AddDomainRule)
+		protected.PUT("/domain-rules/:id", handlers.UpdateDomainRule)
+		protected.DELETE("/domain-rules/:id", handlers.DeleteDomainRule)
+
+		// DNS 分组管理
+		protected.GET("/groups", handlers.GetGroups)
+		protected.POST("/groups", handlers.AddGroup)
+		protected.PUT("/groups/:id", handlers.UpdateGroup)
+		protected.DELETE("/groups/:id", handlers.DeleteGroup)
+
+		// ========== 命名服务器规则管理 ==========
+		protected.GET("/nameservers", handlers.GetNameservers)
+		protected.POST("/nameservers", handlers.AddNameserver)
+		protected.PUT("/nameservers/:id", handlers.UpdateNameserver)
+		protected.DELETE("/nameservers/:id", handlers.DeleteNameserver)
 	}
 
 	// 启动服务器

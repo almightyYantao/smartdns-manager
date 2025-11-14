@@ -2,6 +2,8 @@ package database
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -17,8 +19,14 @@ var DB *gorm.DB
 func InitDB() {
 	var err error
 
-	// 使用配置中的数据库路径，而不是硬编码
+	// 获取数据库路径
 	dbPath := config.GetConfig().DBPath
+
+	// 确保数据库目录存在
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatal("Failed to create database directory:", err)
+	}
 
 	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
@@ -34,6 +42,8 @@ func InitDB() {
 		&models.DNSServer{},
 		&models.AddressMap{},
 		&models.DomainSet{},
+		&models.DNSGroup{},
+		&models.DomainSetItem{},
 		&models.DomainRule{},
 		&models.Nameserver{},
 		&models.ConfigSyncLog{},
@@ -52,4 +62,26 @@ func InitDB() {
 	DB.Model(&models.DNSServer{}).Where("enabled IS NULL").Update("enabled", true)
 
 	log.Printf("Database initialized successfully at: %s", dbPath)
+
+	// 初始化系统分组
+	initSystemGroups()
+}
+
+func initSystemGroups() {
+	systemGroups := []models.DNSGroup{
+		{Name: "cn", Description: "国内DNS", Color: "blue", IsSystem: true},
+		{Name: "oversea", Description: "国外DNS", Color: "green", IsSystem: true},
+		{Name: "local", Description: "本地DNS", Color: "orange", IsSystem: true},
+		{Name: "ad", Description: "广告过滤", Color: "red", IsSystem: true},
+		{Name: "bootstrap", Description: "启动DNS", Color: "purple", IsSystem: true},
+	}
+
+	for _, group := range systemGroups {
+		var existing models.DNSGroup
+		if err := DB.Where("name = ?", group.Name).First(&existing).Error; err != nil {
+			// 不存在则创建
+			DB.Create(&group)
+			log.Printf("Created system group: %s", group.Name)
+		}
+	}
 }
