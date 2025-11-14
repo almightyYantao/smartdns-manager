@@ -33,14 +33,35 @@ const MainLayout = () => {
       label: "节点管理",
     },
     {
-      key: "/addresses",
-      icon: <GlobalOutlined />,
-      label: "地址映射",
-    },
-    {
-      key: "/servers",
+      key: "config",
       icon: <SettingOutlined />,
-      label: "DNS服务器",
+      label: "配置管理",
+      children: [
+        {
+          key: "/groups",
+          label: "分组管理",
+        },
+        {
+          key: "/addresses",
+          label: "地址映射",
+        },
+        {
+          key: "/servers",
+          label: "DNS服务器",
+        },
+        {
+          key: "/domain-sets",
+          label: "域名集",
+        },
+        {
+          key: "/domain-rules",
+          label: "域名规则",
+        },
+        {
+          key: "/nameservers",
+          label: "命名服务器",
+        },
+      ],
     },
     {
       key: "/notifications", // 新增

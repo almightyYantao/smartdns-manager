@@ -83,6 +83,40 @@ export const getInitLogs = (id) => request.get(`/nodes/${id}/init/logs`);
 export const uninstallSmartDNS = (id) => request.post(`/nodes/${id}/uninstall`);
 export const reinstallSmartDNS = (id) => request.post(`/nodes/${id}/reinstall`);
 
+// 域名集管理
+export const getDomainSets = (params) =>
+  request.get("/domain-sets", { params });
+export const getDomainSet = (id) => request.get(`/domain-sets/${id}`);
+export const addDomainSet = (data) => request.post("/domain-sets", data);
+export const updateDomainSet = (id, data) =>
+  request.put(`/domain-sets/${id}`, data);
+export const deleteDomainSet = (id) => request.delete(`/domain-sets/${id}`);
+export const importDomainSetFile = (id, data) =>
+  request.post(`/domain-sets/${id}/import`, data);
+export const exportDomainSet = (id) => request.get(`/domain-sets/${id}/export`);
+
+// 域名规则管理
+export const getDomainRules = (params) =>
+  request.get("/domain-rules", { params });
+export const addDomainRule = (data) => request.post("/domain-rules", data);
+export const updateDomainRule = (id, data) =>
+  request.put(`/domain-rules/${id}`, data);
+export const deleteDomainRule = (id) => request.delete(`/domain-rules/${id}`);
+
+// 命名服务器规则
+export const getNameservers = (params) =>
+  request.get("/nameservers", { params });
+export const addNameserver = (data) => request.post("/nameservers", data);
+export const updateNameserver = (id, data) =>
+  request.put(`/nameservers/${id}`, data);
+export const deleteNameserver = (id) => request.delete(`/nameservers/${id}`);
+
+// DNS 分组管理
+export const getGroups = () => request.get('/groups');
+export const addGroup = (data) => request.post('/groups', data);
+export const updateGroup = (id, data) => request.put(`/groups/${id}`, data);
+export const deleteGroup = (id) => request.delete(`/groups/${id}`);
+
 export default {
   login,
   register,
@@ -132,4 +166,28 @@ export default {
   getInitLogs,
   uninstallSmartDNS,
   reinstallSmartDNS,
+  // 域名集
+  getDomainSets,
+  getDomainSet,
+  addDomainSet,
+  updateDomainSet,
+  deleteDomainSet,
+  importDomainSetFile,
+  exportDomainSet,
+
+  // 域名规则
+  getDomainRules,
+  addDomainRule,
+  updateDomainRule,
+  deleteDomainRule,
+
+  // 命名服务器
+  getNameservers,
+  addNameserver,
+  updateNameserver,
+  deleteNameserver,
+  getGroups,
+  addGroup,
+  updateGroup,
+  deleteGroup,
 };

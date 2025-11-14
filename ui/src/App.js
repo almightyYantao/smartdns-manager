@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ConfigProvider, App as AntApp } from "antd";
+import { ConfigProvider, App as AntApp, Card } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import moment from "moment";
 import "moment/locale/zh-cn";
@@ -15,7 +15,11 @@ import Addresses from "./pages/Addresses";
 import Servers from "./pages/Servers";
 import NodeConfig from "./pages/NodeConfig";
 import Settings from "./pages/Settings";
-import NotificationManager from './components/Notification/NotificationManager';
+import NotificationManager from "./components/Notification/NotificationManager";
+import DomainSetManager from "./components/DomainSet/DomainSetManager";
+import DomainRuleManager from "./components/DomainRule/DomainRuleManager";
+import NameserverManager from "./components/Nameserver/NameserverManager";
+import GroupManager from "./components/GroupManager/GroupManager";
 
 moment.locale("zh-cn");
 
@@ -50,6 +54,38 @@ function App() {
               <Route path="servers" element={<Servers />} />
               <Route path="notifications" element={<NotificationManager />} />
               <Route path="settings" element={<Settings />} />
+              <Route
+                path="domain-sets"
+                element={
+                  <Card title="域名集管理" bordered={false}>
+                    <DomainSetManager />
+                  </Card>
+                }
+              />
+              <Route
+                path="domain-rules"
+                element={
+                  <Card title="域名规则管理" bordered={false}>
+                    <DomainRuleManager />
+                  </Card>
+                }
+              />
+              <Route
+                path="nameservers"
+                element={
+                  <Card title="命名服务器管理" bordered={false}>
+                    <NameserverManager />
+                  </Card>
+                }
+              />
+              <Route
+                path="groups"
+                element={
+                  <Card title="分组管理" bordered={false}>
+                    <GroupManager />
+                  </Card>
+                }
+              />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
