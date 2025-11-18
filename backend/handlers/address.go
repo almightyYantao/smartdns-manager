@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 	"smartdns-manager/services"
 	"strconv"
 	"strings"
@@ -32,21 +31,59 @@ func AddAddress(c *gin.Context) {
 		return
 	}
 
-	// 验证域名和IP格式
-	if address.Domain == "" || address.IP == "" {
+	// 验证域名
+	if address.Domain == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "域名和IP地址不能为空",
+			"message": "域名不能为空",
+		})
+		return
+	}
+
+	// 验证类型和对应的值
+	if address.Type == "" {
+		address.Type = "address" // 默认类型
+	}
+
+	if address.Type == "address" {
+		if address.IP == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "IP地址不能为空",
+			})
+			return
+		}
+		address.CNAME = "" // 清空 CNAME
+	} else if address.Type == "cname" {
+		if address.CNAME == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "CNAME别名不能为空",
+			})
+			return
+		}
+		address.IP = "" // 清空 IP
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "类型必须是 address 或 cname",
 		})
 		return
 	}
 
 	// 检查是否已存在
 	var existing models.AddressMap
-	if err := database.DB.Where("domain = ? AND ip = ?", address.Domain, address.IP).First(&existing).Error; err == nil {
+	query := database.DB.Where("domain = ?", address.Domain)
+	if address.Type == "address" {
+		query = query.Where("ip = ?", address.IP)
+	} else {
+		query = query.Where("cname = ?", address.CNAME)
+	}
+
+	if err := query.First(&existing).Error; err == nil {
 		c.JSON(http.StatusConflict, gin.H{
 			"success": false,
-			"message": "该地址映射已存在",
+			"message": "该映射已存在",
 		})
 		return
 	}
@@ -58,22 +95,22 @@ func AddAddress(c *gin.Context) {
 	if err := database.DB.Create(&address).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "添加地址映射失败",
+			"message": "添加失败",
 			"error":   err.Error(),
 		})
 		return
 	}
 
-	// ========== 自动同步到节点 ==========
+	// 自动同步到节点
 	go func() {
 		if err := syncService.SyncAddressToNodes(&address); err != nil {
-			log.Printf("同步地址映射到节点失败: %v", err)
+			log.Printf("同步到节点失败: %v", err)
 		}
 	}()
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"message": "地址映射添加成功，正在同步到节点...",
+		"message": "添加成功，正在同步到节点...",
 		"data":    address,
 	})
 }
@@ -404,25 +441,25 @@ func parseAddressesFromContent(content, format string) ([]models.AddressMap, err
 			continue
 		}
 
-		if format == "hosts" {
-			// hosts 格式: IP domain
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				addresses = append(addresses, models.AddressMap{
-					IP:     parts[0],
-					Domain: parts[1],
-				})
-			}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+
+		// 检查是否是 CNAME 格式
+		if len(parts) >= 3 && strings.ToLower(parts[1]) == "cname" {
+			addresses = append(addresses, models.AddressMap{
+				Domain: parts[0],
+				CNAME:  parts[2],
+				Type:   "cname",
+			})
 		} else {
-			// smartdns 格式: address /domain/IP
-			re := regexp.MustCompile(`address\s+/(.*?)/(.*)`)
-			matches := re.FindStringSubmatch(line)
-			if len(matches) == 3 {
-				addresses = append(addresses, models.AddressMap{
-					Domain: matches[1],
-					IP:     matches[2],
-				})
-			}
+			// Address 格式
+			addresses = append(addresses, models.AddressMap{
+				Domain: parts[0],
+				IP:     parts[1],
+				Type:   "address",
+			})
 		}
 	}
 

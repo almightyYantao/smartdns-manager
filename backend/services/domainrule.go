@@ -10,10 +10,14 @@ import (
 	"smartdns-manager/models"
 )
 
-type DomainRuleService struct{}
+type DomainRuleService struct {
+	notificationService *NotificationService
+}
 
 func NewDomainRuleService() *DomainRuleService {
-	return &DomainRuleService{}
+	return &DomainRuleService{
+		notificationService: NewNotificationService(),
+	}
 }
 
 // SyncDomainRuleToNodes 同步域名规则到节点
@@ -56,6 +60,7 @@ func (s *DomainRuleService) syncDomainRuleToNode(rule *models.DomainRule, node *
 	// 更新配置
 	newContent := s.updateDomainRulesInConfig(configContent, ruleLine, rule.Domain)
 
+	s.notificationService.SendNotification(node.ID, "domain_rule_sync", "域名规则同步", fmt.Sprintf("域名规则 %s 已同步到节点 %s", rule.Domain, node.Name))
 	// 写回配置
 	client.WriteFile(node.ConfigPath, newContent)
 }
@@ -182,6 +187,7 @@ func (s *DomainRuleService) deleteDomainRuleFromNode(rule *models.DomainRule, no
 			newLines = append(newLines, line)
 		}
 	}
+	s.notificationService.SendNotification(node.ID, "domain_rule_delete_sync", "域名规则删除同步", fmt.Sprintf("域名规则 %s 已删除 %s", rule.Domain, node.Name))
 
 	client.WriteFile(node.ConfigPath, strings.Join(newLines, "\n"))
 }

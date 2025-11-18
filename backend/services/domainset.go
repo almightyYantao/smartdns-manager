@@ -70,7 +70,7 @@ func (s *DomainSetService) syncDomainSetToNode(domainSet *models.DomainSet, node
 
 	// 更新主配置文件，确保引用了这个域名集
 	s.ensureDomainSetInConfig(client, node, domainSet)
-
+	s.notificationService.SendNotification(node.ID, "domain_set_sync", "域名集同步", fmt.Sprintf("域名集 %s 已完成同步 %s", domainSet.Name, node.Name))
 	log.Printf("✅ 域名集 %s 同步成功: %s", domainSet.Name, node.Name)
 }
 
@@ -183,6 +183,8 @@ func (s *DomainSetService) deleteDomainSetFromNode(domainSet *models.DomainSet, 
 			newLines = append(newLines, line)
 		}
 	}
+
+	s.notificationService.SendNotification(node.ID, "domain_set_sync", "域名集删除同步", fmt.Sprintf("域名集 %s 已删除 %s", domainSet.Name, node.Name))
 
 	client.WriteFile(node.ConfigPath, strings.Join(newLines, "\n"))
 }

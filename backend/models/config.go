@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type SmartDNSConfig struct {
 	Servers       []DNSServer       `json:"servers"`
@@ -28,15 +32,18 @@ type DNSServer struct {
 
 // AddressMap 地址映射
 type AddressMap struct {
-	ID        uint      `json:"id" gorm:"primarykey"`
-	Domain    string    `json:"domain" gorm:"not null;index"`
-	IP        string    `json:"ip" gorm:"not null"`
-	Tags      string    `json:"tags"` // JSON 数组
-	Comment   string    `json:"comment"`
-	NodeIDs   string    `json:"node_ids"`                    // JSON 数组，应用到哪些节点，空表示全部
-	Enabled   bool      `json:"enabled" gorm:"default:true"` // 是否启用
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint           `gorm:"primarykey" json:"id"`
+	Domain    string         `gorm:"not null;index" json:"domain"`
+	IP        string         `json:"ip"`                          // 可以为空
+	CNAME     string         `json:"cname"`                       // 新增：CNAME别名
+	Type      string         `gorm:"default:address" json:"type"` // 新增：类型 address/cname
+	Tags      string         `json:"tags"`
+	Comment   string         `json:"comment"`
+	NodeIDs   string         `gorm:"default:[]" json:"node_ids"`
+	Enabled   bool           `gorm:"default:true" json:"enabled"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // DomainSet 域名集

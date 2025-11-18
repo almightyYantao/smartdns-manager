@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Table,
   Button,
@@ -14,7 +14,7 @@ import {
   Switch,
   Badge,
   Tooltip,
-} from 'antd';
+} from "antd";
 import {
   PlusOutlined,
   EditOutlined,
@@ -24,7 +24,7 @@ import {
   SyncOutlined,
   CloudServerOutlined,
   CheckCircleOutlined,
-} from '@ant-design/icons';
+} from "@ant-design/icons";
 import {
   getAddresses,
   addAddress,
@@ -34,10 +34,10 @@ import {
   importAddresses,
   getNodes,
   triggerFullSync,
-  batchFullSync
-} from '../../api';
-import moment from 'moment';
-import SyncStatus from './SyncStatus';
+  batchFullSync,
+} from "../../api";
+import moment from "moment";
+import SyncStatus from "./SyncStatus";
 
 const { Option } = Select;
 
@@ -77,7 +77,7 @@ const AddressManager = () => {
         total: response.total || 0,
       });
     } catch (error) {
-      message.error('加载地址映射失败');
+      message.error("加载地址映射失败");
     } finally {
       setLoading(false);
     }
@@ -88,7 +88,7 @@ const AddressManager = () => {
       const response = await getNodes();
       setNodes(response.data || []);
     } catch (error) {
-      console.error('加载节点列表失败', error);
+      console.error("加载节点列表失败", error);
     }
   };
 
@@ -111,36 +111,36 @@ const AddressManager = () => {
   const handleDelete = async (id) => {
     try {
       await deleteAddress(id);
-      message.success('删除成功，正在从节点移除...');
+      message.success("删除成功，正在从节点移除...");
       loadAddresses();
     } catch (error) {
-      message.error('删除失败');
+      message.error("删除失败");
     }
   };
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      
+
       // 转换 node_ids 为 JSON 字符串
       if (values.node_ids && values.node_ids.length > 0) {
         values.node_ids = JSON.stringify(values.node_ids);
       } else {
-        values.node_ids = '[]';
+        values.node_ids = "[]";
       }
 
       if (editingAddress) {
         await updateAddress(editingAddress.id, values);
-        message.success('更新成功，正在同步到节点...');
+        message.success("更新成功，正在同步到节点...");
       } else {
         await addAddress(values);
-        message.success('添加成功，正在同步到节点...');
+        message.success("添加成功，正在同步到节点...");
       }
-      
+
       setModalVisible(false);
       loadAddresses();
     } catch (error) {
-      message.error('操作失败');
+      message.error("操作失败");
     }
   };
 
@@ -152,29 +152,33 @@ const AddressManager = () => {
   const handleBatchSubmit = async () => {
     try {
       const values = await batchForm.validateFields();
-      const lines = values.content.split('\n').filter(line => line.trim());
-      
-      const addresses = lines.map(line => {
-        const [domain, ip] = line.split(/\s+/);
-        return { domain, ip };
-      }).filter(addr => addr.domain && addr.ip);
+      const lines = values.content.split("\n").filter((line) => line.trim());
+
+      const addresses = lines
+        .map((line) => {
+          const [domain, ip] = line.split(/\s+/);
+          return { domain, ip };
+        })
+        .filter((addr) => addr.domain && addr.ip);
 
       if (addresses.length === 0) {
-        message.error('没有有效的地址映射');
+        message.error("没有有效的地址映射");
         return;
       }
 
       const nodeIds = values.node_ids || [];
-      await batchAddAddresses({ 
-        addresses, 
-        node_ids: nodeIds 
+      await batchAddAddresses({
+        addresses,
+        node_ids: nodeIds,
       });
-      
-      message.success(`成功添加 ${addresses.length} 条地址映射，正在同步到节点...`);
+
+      message.success(
+        `成功添加 ${addresses.length} 条地址映射，正在同步到节点...`
+      );
       setBatchModalVisible(false);
       loadAddresses();
     } catch (error) {
-      message.error('批量添加失败');
+      message.error("批量添加失败");
     }
   };
 
@@ -183,11 +187,11 @@ const AddressManager = () => {
     reader.onload = async (e) => {
       try {
         const content = e.target.result;
-        await importAddresses({ content, format: 'smartdns' });
-        message.success('导入成功，正在同步到节点...');
+        await importAddresses({ content, format: "smartdns" });
+        message.success("导入成功，正在同步到节点...");
         loadAddresses();
       } catch (error) {
-        message.error('导入失败');
+        message.error("导入失败");
       }
     };
     reader.readAsText(file);
@@ -196,45 +200,45 @@ const AddressManager = () => {
 
   const handleExport = () => {
     const content = addresses
-      .map(addr => `address /${addr.domain}/${addr.ip}`)
-      .join('\n');
-    
-    const blob = new Blob([content], { type: 'text/plain' });
+      .map((addr) => `address /${addr.domain}/${addr.ip}`)
+      .join("\n");
+
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `addresses_${moment().format('YYYYMMDD_HHmmss')}.conf`;
+    a.download = `addresses_${moment().format("YYYYMMDD_HHmmss")}.conf`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleSyncToNode = async (nodeId) => {
     try {
-      message.loading({ content: '正在同步配置到节点...', key: 'sync' });
+      message.loading({ content: "正在同步配置到节点...", key: "sync" });
       await triggerFullSync(nodeId);
-      message.success({ content: '同步任务已启动', key: 'sync' });
+      message.success({ content: "同步任务已启动", key: "sync" });
     } catch (error) {
-      message.error({ content: '同步失败', key: 'sync' });
+      message.error({ content: "同步失败", key: "sync" });
     }
   };
 
   const handleBatchSync = async () => {
     if (selectedRowKeys.length === 0) {
-      message.warning('请先选择要同步的节点');
+      message.warning("请先选择要同步的节点");
       return;
     }
 
     Modal.confirm({
-      title: '批量同步配置',
+      title: "批量同步配置",
       content: `确定要将配置同步到选中的 ${selectedRowKeys.length} 个节点吗？`,
       onOk: async () => {
         try {
-          message.loading({ content: '正在批量同步...', key: 'batchSync' });
+          message.loading({ content: "正在批量同步...", key: "batchSync" });
           await batchFullSync({ node_ids: selectedRowKeys });
-          message.success({ content: '批量同步任务已启动', key: 'batchSync' });
+          message.success({ content: "批量同步任务已启动", key: "batchSync" });
           setSelectedRowKeys([]);
         } catch (error) {
-          message.error({ content: '批量同步失败', key: 'batchSync' });
+          message.error({ content: "批量同步失败", key: "batchSync" });
         }
       },
     });
@@ -246,7 +250,7 @@ const AddressManager = () => {
   };
 
   const parseNodeIds = (nodeIdsStr) => {
-    if (!nodeIdsStr || nodeIdsStr === '[]') return [];
+    if (!nodeIdsStr || nodeIdsStr === "[]") return [];
     try {
       return JSON.parse(nodeIdsStr);
     } catch {
@@ -256,40 +260,64 @@ const AddressManager = () => {
 
   const columns = [
     {
-      title: '域名',
-      dataIndex: 'domain',
-      key: 'domain',
-      width: 300,
+      title: "类型",
+      dataIndex: "type",
+      key: "type",
+      width: 100,
+      render: (type) => (
+        <Tag color={type === "cname" ? "green" : "blue"}>
+          {type === "cname" ? "CNAME" : "Address"}
+        </Tag>
+      ),
+    },
+    {
+      title: "域名",
+      dataIndex: "domain",
+      key: "domain",
+      width: 250,
       render: (text) => <Tag color="blue">{text}</Tag>,
     },
     {
-      title: 'IP地址',
-      dataIndex: 'ip',
-      key: 'ip',
+      title: "目标",
+      key: "target",
+      width: 250,
+      render: (_, record) =>
+        record.type === "cname" ? (
+          <Tag color="green">{record.cname}</Tag>
+        ) : (
+          <code>{record.ip}</code>
+        ),
+    },
+    {
+      title: "IP地址",
+      dataIndex: "ip",
+      key: "ip",
       width: 200,
       render: (text) => <code>{text}</code>,
     },
     {
-      title: '应用节点',
-      dataIndex: 'node_ids',
-      key: 'node_ids',
+      title: "应用节点",
+      dataIndex: "node_ids",
+      key: "node_ids",
       width: 200,
       render: (nodeIdsStr, record) => {
         const nodeIds = parseNodeIds(nodeIdsStr);
-        
+
         if (nodeIds.length === 0) {
           return <Tag color="green">全部节点</Tag>;
         }
 
         const nodeNames = nodes
-          .filter(n => nodeIds.includes(n.id))
-          .map(n => n.name);
+          .filter((n) => nodeIds.includes(n.id))
+          .map((n) => n.name);
 
         return (
-          <Tooltip title={nodeNames.join(', ')}>
+          <Tooltip title={nodeNames.join(", ")}>
             <Space>
-              {nodeNames.slice(0, 2).map(name => (
-                <Tag key={name} color="cyan">{name}</Tag>
+              {nodeNames.slice(0, 2).map((name) => (
+                <Tag key={name} color="cyan">
+                  {name}
+                </Tag>
               ))}
               {nodeNames.length > 2 && <Tag>+{nodeNames.length - 2}</Tag>}
             </Space>
@@ -298,35 +326,35 @@ const AddressManager = () => {
       },
     },
     {
-      title: '状态',
-      dataIndex: 'enabled',
-      key: 'enabled',
+      title: "状态",
+      dataIndex: "enabled",
+      key: "enabled",
       width: 80,
       render: (enabled) => (
         <Badge
-          status={enabled ? 'success' : 'default'}
-          text={enabled ? '启用' : '禁用'}
+          status={enabled ? "success" : "default"}
+          text={enabled ? "启用" : "禁用"}
         />
       ),
     },
     {
-      title: '备注',
-      dataIndex: 'comment',
-      key: 'comment',
+      title: "备注",
+      dataIndex: "comment",
+      key: "comment",
       ellipsis: true,
-      render: (text) => text || '-',
+      render: (text) => text || "-",
     },
     {
-      title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      title: "创建时间",
+      dataIndex: "created_at",
+      key: "created_at",
       width: 180,
-      render: (time) => moment(time).format('YYYY-MM-DD HH:mm:ss'),
+      render: (time) => moment(time).format("YYYY-MM-DD HH:mm:ss"),
     },
     {
-      title: '操作',
-      key: 'action',
-      fixed: 'right',
+      title: "操作",
+      key: "action",
+      fixed: "right",
       width: 150,
       render: (_, record) => (
         <Space size="small">
@@ -344,12 +372,7 @@ const AddressManager = () => {
             okText="确定"
             cancelText="取消"
           >
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-            >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>
@@ -365,19 +388,18 @@ const AddressManager = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+      <div
+        style={{
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
         <Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAdd}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             添加地址映射
           </Button>
-          <Button
-            icon={<PlusOutlined />}
-            onClick={handleBatchAdd}
-          >
+          <Button icon={<PlusOutlined />} onClick={handleBatchAdd}>
             批量添加
           </Button>
           <Upload
@@ -385,9 +407,7 @@ const AddressManager = () => {
             showUploadList={false}
             beforeUpload={handleImport}
           >
-            <Button icon={<UploadOutlined />}>
-              导入
-            </Button>
+            <Button icon={<UploadOutlined />}>导入</Button>
           </Upload>
           <Button
             icon={<DownloadOutlined />}
@@ -403,9 +423,7 @@ const AddressManager = () => {
             同步状态
           </Button>
         </Space>
-        <span style={{ color: '#666' }}>
-          共 {pagination.total} 条记录
-        </span>
+        <span style={{ color: "#666" }}>共 {pagination.total} 条记录</span>
       </div>
 
       <Table
@@ -426,7 +444,7 @@ const AddressManager = () => {
 
       {/* 添加/编辑地址映射 Modal */}
       <Modal
-        title={editingAddress ? '编辑地址映射' : '添加地址映射'}
+        title={editingAddress ? "编辑地址映射" : "添加地址映射"}
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => setModalVisible(false)}
@@ -436,31 +454,94 @@ const AddressManager = () => {
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            name="domain"
-            label="域名"
-            rules={[
-              { required: true, message: '请输入域名' },
-              {
-                pattern: /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/,
-                message: '请输入有效的域名',
-              },
-            ]}
+            name="type"
+            label="映射类型"
+            rules={[{ required: true }]}
+            initialValue="address"
           >
-            <Input placeholder="例如: example.com" />
+            <Select
+              onChange={(value) => {
+                // 切换类型时清空对应字段
+                if (value === "address") {
+                  form.setFieldsValue({ cname: undefined });
+                } else {
+                  form.setFieldsValue({ ip: undefined });
+                }
+              }}
+            >
+              <Option value="address">
+                <Space>
+                  <Tag color="blue">Address</Tag>
+                  <span>IP 地址映射</span>
+                </Space>
+              </Option>
+              <Option value="cname">
+                <Space>
+                  <Tag color="green">CNAME</Tag>
+                  <span>别名映射</span>
+                </Space>
+              </Option>
+            </Select>
           </Form.Item>
 
           <Form.Item
-            name="ip"
-            label="IP地址"
+            name="domain"
+            label="源域名"
             rules={[
-              { required: true, message: '请输入IP地址' },
+              { required: true, message: "请输入域名" },
               {
-                pattern: /^(\d{1,3}\.){3}\d{1,3}$/,
-                message: '请输入有效的IP地址',
+                pattern:
+                  /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/,
+                message: "请输入有效的域名",
               },
             ]}
           >
-            <Input placeholder="例如: 192.168.1.1" />
+            <Input placeholder="例如: a.com" />
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) => prev.type !== curr.type}
+          >
+            {({ getFieldValue }) => {
+              const type = getFieldValue("type");
+
+              if (type === "address") {
+                return (
+                  <Form.Item
+                    name="ip"
+                    label="IP地址"
+                    rules={[
+                      { required: true, message: "请输入IP地址" },
+                      {
+                        pattern: /^(\d{1,3}\.){3}\d{1,3}$/,
+                        message: "请输入有效的IP地址",
+                      },
+                    ]}
+                  >
+                    <Input placeholder="例如: 192.168.1.1" />
+                  </Form.Item>
+                );
+              } else {
+                return (
+                  <Form.Item
+                    name="cname"
+                    label="目标域名 (CNAME)"
+                    rules={[
+                      { required: true, message: "请输入目标域名" },
+                      {
+                        pattern:
+                          /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/,
+                        message: "请输入有效的域名",
+                      },
+                    ]}
+                    extra="查询源域名时，将使用目标域名的查询结果"
+                  >
+                    <Input placeholder="例如: b.com" />
+                  </Form.Item>
+                );
+              }
+            }}
           </Form.Item>
 
           <Form.Item
@@ -468,18 +549,14 @@ const AddressManager = () => {
             label="应用到节点"
             extra="不选择则应用到所有节点"
           >
-            <Select
-              mode="multiple"
-              placeholder="选择要应用的节点"
-              allowClear
-            >
-              {nodes.map(node => (
+            <Select mode="multiple" placeholder="选择要应用的节点" allowClear>
+              {nodes.map((node) => (
                 <Option key={node.id} value={node.id}>
                   <Space>
                     <CloudServerOutlined />
                     {node.name}
-                    {node.status === 'online' && (
-                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    {node.status === "online" && (
+                      <CheckCircleOutlined style={{ color: "#52c41a" }} />
                     )}
                   </Space>
                 </Option>
@@ -522,12 +599,8 @@ const AddressManager = () => {
             label="应用到节点"
             extra="不选择则应用到所有节点"
           >
-            <Select
-              mode="multiple"
-              placeholder="选择要应用的节点"
-              allowClear
-            >
-              {nodes.map(node => (
+            <Select mode="multiple" placeholder="选择要应用的节点" allowClear>
+              {nodes.map((node) => (
                 <Option key={node.id} value={node.id}>
                   {node.name}
                 </Option>
@@ -537,16 +610,20 @@ const AddressManager = () => {
 
           <Form.Item
             name="content"
-            label="地址映射列表"
-            rules={[{ required: true, message: '请输入地址映射' }]}
-            extra="每行一条记录，格式: 域名 IP地址"
+            label="映射列表"
+            rules={[{ required: true, message: "请输入映射" }]}
+            extra="每行一条记录。Address格式: 域名 IP | CNAME格式: 域名 cname 目标域名"
           >
             <Input.TextArea
               rows={15}
-              placeholder={`example.com 192.168.1.1
+              placeholder={`# Address 映射
+example.com 192.168.1.1
 test.com 192.168.1.2
-demo.com 192.168.1.3`}
-              style={{ fontFamily: 'monospace' }}
+
+# CNAME 映射
+a.com cname b.com
+cdn.example.com cname cdn.cloudflare.com`}
+              style={{ fontFamily: "monospace" }}
             />
           </Form.Item>
         </Form>

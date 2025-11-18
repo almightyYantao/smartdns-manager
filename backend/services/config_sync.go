@@ -57,31 +57,33 @@ func (s *ConfigSyncService) SyncAddressToNodes(address *models.AddressMap) error
 
 // syncAddressToNode 同步地址映射到单个节点
 func (s *ConfigSyncService) syncAddressToNode(address *models.AddressMap, node *models.Node) error {
-	log.Printf("开始同步地址映射到节点: %s (%s -> %s)", node.Name, address.Domain, address.IP)
+	// 生成显示文本
+	var displayText string
+	if address.Type == "cname" {
+		displayText = fmt.Sprintf("%s -> %s (CNAME)", address.Domain, address.CNAME)
+	} else {
+		displayText = fmt.Sprintf("%s -> %s", address.Domain, address.IP)
+	}
+
+	log.Printf("开始同步到节点: %s (%s)", node.Name, displayText)
 
 	syncLog := &models.ConfigSyncLog{
 		NodeID:  node.ID,
 		Action:  "add",
-		Type:    "address",
-		Content: fmt.Sprintf("%s -> %s", address.Domain, address.IP),
+		Type:    address.Type,
+		Content: displayText,
 		Status:  "pending",
 	}
 	database.DB.Create(syncLog)
+
 	// 连接节点
 	client, err := NewSSHClient(node)
 	if err != nil {
 		syncLog.Status = "failed"
 		syncLog.Error = err.Error()
 		database.DB.Save(syncLog)
-
-		// 发送失败通知
-		s.notificationService.SendNotification(
-			node.ID,
-			"sync_failed",
-			"❌ 配置同步失败",
-			fmt.Sprintf("地址映射 `%s -> %s` 同步失败\n\n错误: %s", address.Domain, address.IP, err.Error()),
-		)
-
+		s.notificationService.SendNotification(node.ID, "sync_failed", "❌ 配置同步失败",
+			fmt.Sprintf("%s 同步失败\n\n错误: %s", displayText, err.Error()))
 		return err
 	}
 	defer client.Close()
@@ -92,15 +94,6 @@ func (s *ConfigSyncService) syncAddressToNode(address *models.AddressMap, node *
 		syncLog.Status = "failed"
 		syncLog.Error = err.Error()
 		database.DB.Save(syncLog)
-
-		// 发送失败通知
-		s.notificationService.SendNotification(
-			node.ID,
-			"sync_failed",
-			"❌ 配置同步失败",
-			fmt.Sprintf("地址映射 `%s -> %s` 同步失败\n\n错误: %s", address.Domain, address.IP, err.Error()),
-		)
-
 		return err
 	}
 
@@ -114,23 +107,22 @@ func (s *ConfigSyncService) syncAddressToNode(address *models.AddressMap, node *
 		return err
 	}
 
-	// 检查是否已存在
-	addressExists := false
+	// 检查是否已存在并更新
+	found := false
 	for i, addr := range config.Addresses {
 		if addr.Domain == address.Domain {
-			// 更新现有地址
+			// 更新现有记录
 			config.Addresses[i].IP = address.IP
-			addressExists = true
+			config.Addresses[i].CNAME = address.CNAME
+			config.Addresses[i].Type = address.Type
+			found = true
 			break
 		}
 	}
 
-	// 如果不存在，添加新地址
-	if !addressExists {
-		config.Addresses = append(config.Addresses, models.AddressMap{
-			Domain: address.Domain,
-			IP:     address.IP,
-		})
+	// 如果不存在，添加新记录
+	if !found {
+		config.Addresses = append(config.Addresses, *address)
 	}
 
 	// 生成新配置
@@ -151,24 +143,19 @@ func (s *ConfigSyncService) syncAddressToNode(address *models.AddressMap, node *
 		return err
 	}
 
-	// 重启服务（可选，根据需求决定）
-	// err = client.RestartService("smartdns")
+	// 重载服务
+	// err = client.ReloadService("smartdns")
 	// if err != nil {
-	//     log.Printf("警告: 重启服务失败: %v", err)
+	// 	log.Printf("警告: 重载服务失败: %v", err)
 	// }
 
 	syncLog.Status = "success"
 	database.DB.Save(syncLog)
 
-	// 发送成功通知
-	s.notificationService.SendNotification(
-		node.ID,
-		"sync_success",
-		"✅ 配置同步成功",
-		fmt.Sprintf("地址映射 `%s -> %s` 已成功同步到节点", address.Domain, address.IP),
-	)
+	s.notificationService.SendNotification(node.ID, "sync_success", "✅ 配置同步成功",
+		fmt.Sprintf("%s 已成功同步到节点", displayText))
 
-	log.Printf("✅ 成功同步地址映射到节点: %s", node.Name)
+	log.Printf("✅ 成功同步到节点: %s", node.Name)
 	return nil
 }
 
