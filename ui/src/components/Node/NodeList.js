@@ -283,7 +283,6 @@ const NodeList = () => {
               icon={<SettingOutlined />}
               onClick={() => handleInitNode(record)}
             >
-              初始化
             </Button>
           </Tooltip>
           <Tooltip title="查看状态">

@@ -80,7 +80,7 @@ func CheckNodeInit(c *gin.Context) {
 	}
 
 	// 如果状态是 unknown，尝试检测
-	if node.InitStatus == "unknown" {
+	if node.InitStatus == "unknown" || node.InitStatus == "not_installed" {
 		go func() {
 			if err := initService.CheckAndUpdateNodeStatus(&node); err != nil {
 				log.Printf("检测节点状态失败: %v", err)

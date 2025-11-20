@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"smartdns-manager/config"
 	"smartdns-manager/database"
 	"smartdns-manager/models"
 )
@@ -32,8 +33,8 @@ type SmartDNSRelease struct {
 // GetLatestReleases 获取最新版本的下载链接
 func (s *InitService) GetLatestReleases() map[string]SmartDNSRelease {
 	// 使用固定版本，也可以从 GitHub API 动态获取
-	version := "1.2024.11.10-2328"
-	baseURL := "https://github.com/pymumu/smartdns/releases/download/Release46"
+	version := config.GetConfig().InitVersion
+	baseURL := config.GetConfig().InitBaseURL
 
 	return map[string]SmartDNSRelease{
 		"x86_64-linux": {
@@ -122,6 +123,7 @@ func (s *InitService) InitNode(nodeID uint) error {
 
 	// 更新状态
 	node.InitStatus = "installed"
+	node.Status = "online"
 	database.DB.Save(&node)
 
 	log.Printf("✅ 节点初始化完成: %s", node.Name)
@@ -209,6 +211,7 @@ func (s *InitService) detectSystem(node *models.Node) error {
 func (s *InitService) checkSmartDNSInstalled(node *models.Node) (bool, string) {
 	client, err := NewSSHClient(node)
 	if err != nil {
+		log.Printf("SSH连接失败: %v", err)
 		return false, ""
 	}
 	defer client.Close()
@@ -216,15 +219,31 @@ func (s *InitService) checkSmartDNSInstalled(node *models.Node) (bool, string) {
 	// 检查 smartdns 命令是否存在
 	output, err := client.ExecuteCommand("smartdns -v 2>&1 || /usr/sbin/smartdns -v 2>&1")
 	if err != nil {
+		log.Printf("执行命令失败: %v", err)
+		return false, ""
+	}
+
+	// 打印原始输出，看看实际收到了什么
+	log.Printf("原始输出: [%s]", output)
+	log.Printf("输出长度: %d", len(output))
+
+	// 简单检查是否包含 smartdns
+	if !strings.Contains(strings.ToLower(output), "smartdns") {
+		log.Printf("输出中不包含 smartdns")
 		return false, ""
 	}
 
 	// 提取版本号
-	versionRe := regexp.MustCompile(`SmartDNS\s+([^\s,]+)`)
-	if match := versionRe.FindStringSubmatch(output); len(match) > 1 {
+	versionRe := regexp.MustCompile(`(?i)smartdns\s+([\d.]+[^\s]*)`)
+	match := versionRe.FindStringSubmatch(output)
+	log.Printf("正则匹配结果: %v", match)
+
+	if len(match) > 1 {
+		log.Printf("找到版本: %s", match[1])
 		return true, match[1]
 	}
 
+	log.Printf("正则匹配失败")
 	return false, ""
 }
 
@@ -278,8 +297,8 @@ func (s *InitService) downloadSmartDNS(node *models.Node) error {
 	log.Printf("下载地址: %s", release.DownloadURL)
 
 	// 使用 wget 下载，添加重试和超时
-	downloadCmd := fmt.Sprintf("cd %s && wget --tries=3 --timeout=30 -q --show-progress '%s' -O %s",
-		tmpDir, release.DownloadURL, fileName)
+	downloadCmd := fmt.Sprintf("cd %s && (wget --tries=3 --timeout=30 -q '%s' -O %s 2>&1 || curl -sSL --retry 3 --max-time 30 -o %s '%s' 2>&1)",
+		tmpDir, release.DownloadURL, fileName, fileName, release.DownloadURL)
 
 	output, err := client.ExecuteCommand(downloadCmd)
 	if err != nil {

@@ -52,12 +52,12 @@ const MainLayout = () => {
           label: "分组管理",
         },
         {
-          key: "/addresses",
-          label: "地址映射",
+          key: "/servers",
+          label: "上游管理",
         },
         {
-          key: "/servers",
-          label: "DNS服务器",
+          key: "/addresses",
+          label: "地址映射",
         },
         {
           key: "/domain-sets",

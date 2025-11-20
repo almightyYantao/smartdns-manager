@@ -249,12 +249,12 @@ func (h *BackupHandler) performBackup(
 // 预览备份
 // ═══════════════════════════════════════════════════════════════
 
-type BackupPath struct {
-	BackupID uint `json:"backup_id" binding:"required"`
-}
+// type BackupPath struct {
+// 	BackupID uint `json:"backup_id" binding:"required"`
+// }
 
 type PreviewBackupRequest struct {
-	BackupPath BackupPath `json:"backup_path" binding:"required"`
+	BackupID uint `json:"backup_id" binding:"required"`
 }
 
 // PreviewBackup 预览备份内容
@@ -270,7 +270,7 @@ func (h *BackupHandler) PreviewBackup(c *gin.Context) {
 
 	// 查询备份
 	var backup models.Backup
-	backupID := req.BackupPath.BackupID
+	backupID := req.BackupID
 	if err := h.db.Preload("Node").First(&backup, backupID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "备份不存在"})
 		return

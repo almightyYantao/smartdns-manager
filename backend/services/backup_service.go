@@ -4,8 +4,10 @@ package services
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	appConfig "smartdns-manager/config"
@@ -54,8 +56,36 @@ func NewLocalBackupStorageWithNode(node *models.Node) (*LocalBackupStorage, erro
 }
 
 func (l *LocalBackupStorage) Save(ctx context.Context, content []byte, filename string) (string, error) {
-	// 本地存储时，文件已经由 SSH 操作保存，这里只返回路径
-	return filename, nil
+	// 构建完整路径
+	baseDir := appConfig.GetConfig().BackupPath
+	dirPath := fmt.Sprintf("%s/smartdns-backups/%s",
+		baseDir, time.Now().Format("2006-01-02"))
+
+	// 使用sudo创建目录
+	mkdirCmd := fmt.Sprintf("sudo mkdir -p %s", dirPath)
+	if _, err := l.sshClient.ExecuteCommand(mkdirCmd); err != nil {
+		return "", fmt.Errorf("failed to create remote directory: %w", err)
+	}
+
+	// 构建完整文件路径
+	fullPath := filepath.Join(dirPath, filename)
+
+	// 使用echo或cat写入文件内容（需要转义特殊字符）
+	// 使用base64编码来避免特殊字符问题
+	encodedContent := base64.StdEncoding.EncodeToString(content)
+	writeCmd := fmt.Sprintf("echo '%s' | base64 -d | sudo tee %s > /dev/null", encodedContent, fullPath)
+
+	if _, err := l.sshClient.ExecuteCommand(writeCmd); err != nil {
+		return "", fmt.Errorf("failed to write remote file: %w", err)
+	}
+
+	// 设置文件权限
+	chmodCmd := fmt.Sprintf("sudo chmod 644 %s", fullPath)
+	if _, err := l.sshClient.ExecuteCommand(chmodCmd); err != nil {
+		return "", fmt.Errorf("failed to set file permissions: %w", err)
+	}
+
+	return fullPath, nil
 }
 
 func (l *LocalBackupStorage) Load(ctx context.Context, path string) ([]byte, error) {
@@ -249,7 +279,6 @@ func NewBackupStorageManager() *BackupStorageManager {
 
 // GetStorage 获取存储实例
 func (m *BackupStorageManager) GetStorage(node *models.Node) (BackupStorage, string, error) {
-	println(m.config)
 	if m.config.IsS3Enabled() {
 		storage, err := NewS3BackupStorage(m.config)
 		if err != nil {

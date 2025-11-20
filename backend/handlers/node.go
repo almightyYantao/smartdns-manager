@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -261,13 +262,26 @@ func testAndUpdateNodeStatus(node *models.Node) {
 	}
 	defer client.Close()
 
+	// 检查配置文件是否存在
 	_, err = client.ReadFile(node.ConfigPath)
 	if err != nil {
 		node.Status = "error"
-	} else {
-		node.Status = "online"
+		node.LastCheck = time.Now()
+		database.DB.Save(node)
+		return
 	}
 
+	// 检查 SmartDNS 服务状态
+	output, err := client.ExecuteCommand("systemctl is-active smartdns 2>&1")
+	if err != nil || strings.TrimSpace(output) != "active" {
+		node.Status = "stopped" // 或 "error"
+		node.LastCheck = time.Now()
+		database.DB.Save(node)
+		return
+	}
+
+	// 所有检查都通过
+	node.Status = "online"
 	node.LastCheck = time.Now()
 	database.DB.Save(node)
 }

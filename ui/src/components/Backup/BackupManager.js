@@ -304,6 +304,19 @@ const BackupManager = () => {
       defaultSortOrder: "descend",
     },
     {
+      title: "路径",
+      dataIndex: "path",
+      key: "path",
+      ellipsis: {
+        showTitle: false,
+      },
+      render: (text) => (
+        <Tooltip title={text} placement="topLeft">
+          <span>{text || "-"}</span>
+        </Tooltip>
+      ),
+    },
+    {
       title: "备注",
       dataIndex: "comment",
       key: "comment",

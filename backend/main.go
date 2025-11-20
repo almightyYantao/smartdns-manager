@@ -6,6 +6,8 @@ import (
 	"smartdns-manager/database"
 	"smartdns-manager/handlers"
 	"smartdns-manager/middleware"
+	"smartdns-manager/services"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -27,6 +29,11 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * 3600,
 	}))
+
+	healthChecker := services.NewNodeHealthChecker(10 * time.Second)
+	healthChecker.Start()
+
+	defer healthChecker.Stop()
 
 	// 公开路由
 	public := r.Group("/api")
