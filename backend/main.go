@@ -7,6 +7,7 @@ import (
 	"smartdns-manager/handlers"
 	"smartdns-manager/middleware"
 	"smartdns-manager/services"
+	"strconv"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -30,7 +31,12 @@ func main() {
 		MaxAge:           12 * 3600,
 	}))
 
-	healthChecker := services.NewNodeHealthChecker(10 * time.Second)
+	statusTime, err := strconv.Atoi(config.GetConfig().StatusTime)
+	if err != nil {
+		log.Printf("StatusTime配置错误，使用默认值10秒: %v", err)
+		statusTime = 10
+	}
+	healthChecker := services.NewNodeHealthChecker(time.Duration(statusTime) * time.Second)
 	healthChecker.Start()
 
 	defer healthChecker.Stop()
