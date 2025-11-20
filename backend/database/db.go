@@ -50,6 +50,7 @@ func InitDB() {
 		&models.NotificationChannel{},
 		&models.NotificationLog{},
 		&models.InitLog{},
+		&models.Backup{},
 	)
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)

@@ -295,36 +295,52 @@ const AddressManager = () => {
       width: 200,
       render: (text) => <code>{text}</code>,
     },
-    {
-      title: "应用节点",
-      dataIndex: "node_ids",
-      key: "node_ids",
-      width: 200,
-      render: (nodeIdsStr, record) => {
-        const nodeIds = parseNodeIds(nodeIdsStr);
-
-        if (nodeIds.length === 0) {
-          return <Tag color="green">全部节点</Tag>;
-        }
-
-        const nodeNames = nodes
-          .filter((n) => nodeIds.includes(n.id))
-          .map((n) => n.name);
-
+  {
+    title: "应用节点",
+    dataIndex: "node_ids",
+    key: "node_ids",
+    width: 300, // 增加宽度
+    render: (nodeIdsStr, record) => {
+      const nodeIds = parseNodeIds(nodeIdsStr);
+      if (nodeIds.length === 0) {
+        return <Tag color="green">全部节点</Tag>;
+      }
+      const nodeNames = nodes
+        .filter((n) => nodeIds.includes(n.id))
+        .map((n) => n.name);
+      
+      // 优化显示逻辑
+      if (nodeNames.length <= 3) {
         return (
-          <Tooltip title={nodeNames.join(", ")}>
-            <Space>
-              {nodeNames.slice(0, 2).map((name) => (
-                <Tag key={name} color="cyan">
-                  {name}
-                </Tag>
-              ))}
-              {nodeNames.length > 2 && <Tag>+{nodeNames.length - 2}</Tag>}
-            </Space>
-          </Tooltip>
+          <Space wrap size={[4, 4]}>
+            {nodeNames.map((name) => (
+              <Tag key={name} color="cyan" style={{ margin: '2px' }}>
+                {name}
+              </Tag>
+            ))}
+          </Space>
         );
-      },
+      }
+      
+      return (
+        <Tooltip 
+          title={nodeNames.join(", ")}
+          overlayStyle={{ maxWidth: '400px' }}
+        >
+          <Space wrap size={[4, 4]}>
+            {nodeNames.slice(0, 2).map((name) => (
+              <Tag key={name} color="cyan" style={{ margin: '2px' }}>
+                {name}
+              </Tag>
+            ))}
+            <Tag color="default" style={{ margin: '2px' }}>
+              +{nodeNames.length - 2}个
+            </Tag>
+          </Space>
+        </Tooltip>
+      );
     },
+  },
     {
       title: "状态",
       dataIndex: "enabled",

@@ -307,16 +307,6 @@ const NodeConfig = () => {
               label: '地址映射',
               children: addressesTab,
             },
-            {
-              key: 'backups',
-              label: (
-                <span>
-                  <HistoryOutlined />
-                  备份管理
-                </span>
-              ),
-              children: backupsTab,
-            },
           ]}
         />
       </Card>

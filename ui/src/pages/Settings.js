@@ -146,52 +146,11 @@ const Settings = () => {
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         <div>
           <div style={{ marginBottom: 16 }}>
-            <strong>通知设置</strong>
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>节点状态变更通知</span>
-              <Switch defaultChecked />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>配置更新通知</span>
-              <Switch defaultChecked />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>系统错误通知</span>
-              <Switch defaultChecked />
-            </div>
-          </Space>
-        </div>
-
-        <Divider />
-
-        <div>
-          <div style={{ marginBottom: 16 }}>
-            <strong>系统设置</strong>
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>自动刷新仪表板</span>
-              <Switch defaultChecked />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>深色模式</span>
-              <Switch />
-            </div>
-          </Space>
-        </div>
-
-        <Divider />
-
-        <div>
-          <div style={{ marginBottom: 16 }}>
             <strong>关于系统</strong>
           </div>
           <Space direction="vertical">
-            <div>版本: 1.0.0</div>
-            <div>作者: SmartDNS Manager Team</div>
-            <div>GitHub: https://github.com/smartdns/manager</div>
+            <div>作者: Almighty.YanTao</div>
+            <div>GitHub: https://github.com/almightyYantao/smartdns-manager</div>
           </Space>
         </div>
       </Space>

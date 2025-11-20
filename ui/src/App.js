@@ -20,6 +20,7 @@ import DomainSetManager from "./components/DomainSet/DomainSetManager";
 import DomainRuleManager from "./components/DomainRule/DomainRuleManager";
 import NameserverManager from "./components/Nameserver/NameserverManager";
 import GroupManager from "./components/GroupManager/GroupManager";
+import Backup from "./pages/Backup";
 
 moment.locale("zh-cn");
 
@@ -51,6 +52,7 @@ function App() {
               <Route path="nodes" element={<Nodes />} />
               <Route path="nodes/:id/config" element={<NodeConfig />} />
               <Route path="addresses" element={<Addresses />} />
+              <Route path="backup" element={<Backup />} />
               <Route path="servers" element={<Servers />} />
               <Route path="notifications" element={<NotificationManager />} />
               <Route path="settings" element={<Settings />} />

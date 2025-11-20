@@ -58,11 +58,6 @@ func main() {
 		protected.POST("/nodes/batch/config", handlers.BatchUpdateConfig)
 		protected.POST("/nodes/batch/restart", handlers.BatchRestart)
 
-		// 备份管理
-		protected.GET("/nodes/:id/backups", handlers.GetNodeBackups)
-		protected.POST("/nodes/:id/backup", handlers.CreateNodeBackup)
-		protected.POST("/nodes/:id/restore", handlers.RestoreNodeBackup)
-
 		// 地址映射管理
 		protected.POST("/addresses", handlers.AddAddress)
 		protected.PUT("/addresses/:id", handlers.UpdateAddress)
@@ -92,6 +87,14 @@ func main() {
 		protected.GET("/nodes/:id/init/logs", handlers.GetInitLogs)        // 获取初始化日志
 		protected.POST("/nodes/:id/uninstall", handlers.UninstallSmartDNS) // 卸载
 		protected.POST("/nodes/:id/reinstall", handlers.ReinstallSmartDNS) // 重新安装
+
+		// ========== 备份管理 ==========
+		protected.GET("/nodes/:id/backups", handlers.GetNodeBackups)             // 获取备份列表
+		protected.POST("/nodes/:id/backups", handlers.CreateNodeBackup)          // 创建备份（改为 /backups）
+		protected.POST("/nodes/:id/backups/preview", handlers.PreviewBackup)     // 预览备份
+		protected.POST("/nodes/:id/backups/restore", handlers.RestoreNodeBackup) // 还原备份（改为 /backups/restore）
+		protected.DELETE("/nodes/:id/backups", handlers.DeleteNodeBackup)        // 删除备份
+		protected.GET("/nodes/:id/backups/download", handlers.DownloadBackup)    // 下载备份
 
 		// DNS 服务器管理
 		protected.POST("/servers", handlers.AddServer)

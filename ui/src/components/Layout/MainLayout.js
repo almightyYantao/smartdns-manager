@@ -30,7 +30,17 @@ const MainLayout = () => {
     {
       key: "/nodes",
       icon: <CloudServerOutlined />,
-      label: "节点管理",
+      label: "服务管理",
+      children: [
+        {
+          key: "/nodes",
+          label: "节点管理",
+        },
+        {
+          key: "/backup",
+          label: "备份管理",
+        },
+      ],
     },
     {
       key: "config",

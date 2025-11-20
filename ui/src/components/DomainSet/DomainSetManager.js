@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Table,
   Button,
@@ -11,9 +11,8 @@ import {
   Popconfirm,
   Select,
   Badge,
-  Upload,
-  Tabs,
-} from 'antd';
+  Tooltip
+} from "antd";
 import {
   PlusOutlined,
   EditOutlined,
@@ -21,7 +20,7 @@ import {
   DownloadOutlined,
   UploadOutlined,
   EyeOutlined,
-} from '@ant-design/icons';
+} from "@ant-design/icons";
 import {
   getDomainSets,
   getDomainSet,
@@ -31,8 +30,8 @@ import {
   importDomainSetFile,
   exportDomainSet,
   getNodes,
-} from '../../api';
-import moment from 'moment';
+} from "../../api";
+import moment from "moment";
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -59,7 +58,7 @@ const DomainSetManager = () => {
       const response = await getDomainSets();
       setDomainSets(response.data || []);
     } catch (error) {
-      message.error('加载域名集失败');
+      message.error("加载域名集失败");
     } finally {
       setLoading(false);
     }
@@ -70,7 +69,7 @@ const DomainSetManager = () => {
       const response = await getNodes();
       setNodes(response.data || []);
     } catch (error) {
-      console.error('加载节点列表失败', error);
+      console.error("加载节点列表失败", error);
     }
   };
 
@@ -84,21 +83,23 @@ const DomainSetManager = () => {
     try {
       const response = await getDomainSet(record.id);
       const { domain_set, items } = response.data;
-      
+
       setEditingSet(domain_set);
-      const nodeIds = domain_set.node_ids ? JSON.parse(domain_set.node_ids) : [];
-      const domains = items.map(item => item.domain).join('\n');
-      
+      const nodeIds = domain_set.node_ids
+        ? JSON.parse(domain_set.node_ids)
+        : [];
+      const domains = items.map((item) => item.domain).join("\n");
+
       form.setFieldsValue({
         name: domain_set.name,
         description: domain_set.description,
         domains,
         node_ids: nodeIds,
       });
-      
+
       setModalVisible(true);
     } catch (error) {
-      message.error('加载域名集失败');
+      message.error("加载域名集失败");
     }
   };
 
@@ -106,53 +107,53 @@ const DomainSetManager = () => {
     try {
       const response = await getDomainSet(record.id);
       const { domain_set, items } = response.data;
-      
+
       setViewingSet(domain_set);
       setDomainItems(items);
       setViewModalVisible(true);
     } catch (error) {
-      message.error('加载域名集失败');
+      message.error("加载域名集失败");
     }
   };
 
   const handleDelete = async (id) => {
     try {
       await deleteDomainSet(id);
-      message.success('删除成功');
+      message.success("删除成功");
       loadDomainSets();
     } catch (error) {
-      message.error('删除失败');
+      message.error("删除失败");
     }
   };
 
   const handleExport = async (record) => {
     try {
       const response = await exportDomainSet(record.id);
-      
+
       // 下载文件
-      const blob = new Blob([response.data], { type: 'text/plain' });
+      const blob = new Blob([response.data], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${record.name}.conf`;
       a.click();
       URL.revokeObjectURL(url);
-      
-      message.success('导出成功');
+
+      message.success("导出成功");
     } catch (error) {
-      message.error('导出失败');
+      message.error("导出失败");
     }
   };
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      
+
       // 解析域名列表
       const domains = values.domains
-        .split('\n')
-        .map(d => d.trim())
-        .filter(d => d && !d.startsWith('#'));
+        .split("\n")
+        .map((d) => d.trim())
+        .filter((d) => d && !d.startsWith("#"));
 
       const data = {
         name: values.name,
@@ -168,22 +169,22 @@ const DomainSetManager = () => {
           node_ids: data.node_ids,
           enabled: editingSet.enabled,
         });
-        message.success('更新成功，正在同步到节点...');
+        message.success("更新成功，正在同步到节点...");
       } else {
         await addDomainSet(data);
-        message.success('添加成功，正在同步到节点...');
+        message.success("添加成功，正在同步到节点...");
       }
 
       setModalVisible(false);
       loadDomainSets();
     } catch (error) {
-      message.error('操作失败');
+      message.error("操作失败");
     }
   };
 
   const handleImport = async (record) => {
     Modal.confirm({
-      title: '导入域名列表',
+      title: "导入域名列表",
       content: (
         <TextArea
           rows={15}
@@ -193,18 +194,18 @@ const DomainSetManager = () => {
       ),
       width: 600,
       onOk: async () => {
-        const content = document.getElementById('import-textarea').value;
+        const content = document.getElementById("import-textarea").value;
         if (!content) {
-          message.warning('请输入域名列表');
+          message.warning("请输入域名列表");
           return;
         }
 
         try {
           await importDomainSetFile(record.id, { content });
-          message.success('导入成功');
+          message.success("导入成功");
           loadDomainSets();
         } catch (error) {
-          message.error('导入失败');
+          message.error("导入失败");
         }
       },
     });
@@ -212,100 +213,109 @@ const DomainSetManager = () => {
 
   const columns = [
     {
-      title: '名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: "名称",
+      dataIndex: "name",
+      key: "name",
       width: 200,
       render: (text) => <Tag color="blue">{text}</Tag>,
     },
     {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
+      title: "描述",
+      dataIndex: "description",
+      key: "description",
       ellipsis: true,
     },
     {
-      title: '文件路径',
-      dataIndex: 'file_path',
-      key: 'file_path',
+      title: "文件路径",
+      dataIndex: "file_path",
+      key: "file_path",
       width: 250,
-      render: (text) => <code style={{ fontSize: '12px' }}>{text}</code>,
+      render: (text) => <code style={{ fontSize: "12px" }}>{text}</code>,
     },
     {
-      title: '域名数量',
-      dataIndex: 'domain_count',
-      key: 'domain_count',
+      title: "域名数量",
+      dataIndex: "domain_count",
+      key: "domain_count",
       width: 100,
       render: (count) => (
-        <Badge count={count} showZero style={{ backgroundColor: '#52c41a' }} />
+        <Badge count={count} showZero style={{ backgroundColor: "#52c41a" }} />
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'enabled',
-      key: 'enabled',
+      title: "状态",
+      dataIndex: "enabled",
+      key: "enabled",
       width: 80,
       render: (enabled) => (
-        <Tag color={enabled ? 'success' : 'default'}>
-          {enabled ? '启用' : '禁用'}
+        <Tag color={enabled ? "success" : "default"}>
+          {enabled ? "启用" : "禁用"}
         </Tag>
       ),
     },
     {
-      title: '更新时间',
-      dataIndex: 'updated_at',
-      key: 'updated_at',
+      title: "更新时间",
+      dataIndex: "updated_at",
+      key: "updated_at",
       width: 180,
-      render: (time) => moment(time).format('YYYY-MM-DD HH:mm:ss'),
+      render: (time) => moment(time).format("YYYY-MM-DD HH:mm:ss"),
     },
     {
-      title: '操作',
-      key: 'action',
-      fixed: 'right',
+      title: "操作",
+      key: "action",
+      fixed: "right",
       width: 280,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handleView(record)}
-          >
-            查看
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<UploadOutlined />}
-            onClick={() => handleImport(record)}
-          >
-            导入
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => handleExport(record)}
-          >
-            导出
-          </Button>
+          <Tooltip title="查看">
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleView(record)}
+            />
+          </Tooltip>
+
+          <Tooltip title="编辑">
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            />
+          </Tooltip>
+
+          <Tooltip title="导入">
+            <Button
+              type="link"
+              size="small"
+              icon={<UploadOutlined />}
+              onClick={() => handleImport(record)}
+            />
+          </Tooltip>
+
+          <Tooltip title="导出">
+            <Button
+              type="link"
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => handleExport(record)}
+            />
+          </Tooltip>
+
           <Popconfirm
             title="确定要删除吗？"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
+            <Tooltip title="删除">
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -320,7 +330,7 @@ const DomainSetManager = () => {
             添加域名集
           </Button>
         </Space>
-        <span style={{ marginLeft: 16, color: '#666' }}>
+        <span style={{ marginLeft: 16, color: "#666" }}>
           共 {domainSets.length} 个域名集
         </span>
       </div>
@@ -340,7 +350,7 @@ const DomainSetManager = () => {
 
       {/* 添加/编辑 Modal */}
       <Modal
-        title={editingSet ? '编辑域名集' : '添加域名集'}
+        title={editingSet ? "编辑域名集" : "添加域名集"}
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => setModalVisible(false)}
@@ -353,8 +363,11 @@ const DomainSetManager = () => {
             name="name"
             label="域名集名称"
             rules={[
-              { required: true, message: '请输入域名集名称' },
-              { pattern: /^[a-zA-Z0-9_-]+$/, message: '只能包含字母、数字、下划线和横线' },
+              { required: true, message: "请输入域名集名称" },
+              {
+                pattern: /^[a-zA-Z0-9_-]+$/,
+                message: "只能包含字母、数字、下划线和横线",
+              },
             ]}
           >
             <Input placeholder="例如: gfwlist" disabled={!!editingSet} />
@@ -381,7 +394,7 @@ const DomainSetManager = () => {
           <Form.Item
             name="domains"
             label="域名列表"
-            rules={[{ required: true, message: '请输入域名列表' }]}
+            rules={[{ required: true, message: "请输入域名列表" }]}
             extra="每行一个域名，支持注释（以 # 开头）"
           >
             <TextArea
@@ -391,7 +404,7 @@ google.com
 youtube.com
 facebook.com
 twitter.com`}
-              style={{ fontFamily: 'monospace' }}
+              style={{ fontFamily: "monospace" }}
             />
           </Form.Item>
         </Form>
@@ -412,14 +425,14 @@ twitter.com`}
         {viewingSet && (
           <div>
             <div style={{ marginBottom: 16 }}>
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space direction="vertical" style={{ width: "100%" }}>
                 <div>
                   <strong>文件路径：</strong>
                   <code>{viewingSet.file_path}</code>
                 </div>
                 <div>
                   <strong>描述：</strong>
-                  {viewingSet.description || '-'}
+                  {viewingSet.description || "-"}
                 </div>
                 <div>
                   <strong>域名数量：</strong>
@@ -430,19 +443,19 @@ twitter.com`}
 
             <div
               style={{
-                maxHeight: '400px',
-                overflow: 'auto',
-                background: '#f5f5f5',
-                padding: '12px',
-                borderRadius: '4px',
+                maxHeight: "400px",
+                overflow: "auto",
+                background: "#f5f5f5",
+                padding: "12px",
+                borderRadius: "4px",
               }}
             >
               {domainItems.map((item, index) => (
-                <div key={item.id} style={{ marginBottom: '4px' }}>
+                <div key={item.id} style={{ marginBottom: "4px" }}>
                   <code>
                     {index + 1}. {item.domain}
                     {item.comment && (
-                      <span style={{ color: '#999', marginLeft: '8px' }}>
+                      <span style={{ color: "#999", marginLeft: "8px" }}>
                         # {item.comment}
                       </span>
                     )}
