@@ -1,12 +1,25 @@
 # SmartDNS Manager
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/almightyyantao/smartdns-manager)](https://hub.docker.com/r/almightyyantao/smartdns-manager)
-[![License](https://img.shields.io/github/license/almightyyantao/smartdns-manager)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/almightyyantao/smartdns-manager)](https://github.com/almightyyantao/smartdns-manager/releases)
+<div align="center">
 
-一个功能强大的 SmartDNS 集中管理平台，支持多节点管理、配置同步、实时监控和消息推送。
+[![Author](https://img.shields.io/badge/Author-yantao-blue.svg?style=flat-square)](https://github.com/almightyyantao)
+[![Stars](https://img.shields.io/github/stars/almightyyantao/smartdns-manager?style=flat-square&logo=github)](https://github.com/almightyyantao/smartdns-manager/stargazers)
+[![Forks](https://img.shields.io/github/forks/almightyyantao/smartdns-manager?style=flat-square&logo=github)](https://github.com/almightyyantao/smartdns-manager/network)
+[![License](https://img.shields.io/github/license/almightyyantao/smartdns-manager?style=flat-square)](LICENSE)
+[![Issues](https://img.shields.io/github/issues/almightyyantao/smartdns-manager?style=flat-square&logo=github)](https://github.com/almightyyantao/smartdns-manager/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/almightyyantao/smartdns-manager?style=flat-square&logo=github)](https://github.com/almightyyantao/smartdns-manager/commits/main)
+
+**一个功能强大的 SmartDNS 集中管理平台**
+
+支持多节点管理 · 配置同步 · 实时监控 · 消息推送
+
+[快速开始](#-快速开始) · [功能特性](#-主要特性) · [系统截图](#-系统截图) · [文档](https://github.com/almightyyantao/smartdns-manager/wiki) · [反馈问题](https://github.com/almightyyantao/smartdns-manager/issues)
 
 ![Dashboard](docs/images/dashboard.png)
+
+</div>
+
+---
 
 ## ✨ 主要特性
 
@@ -49,17 +62,18 @@
 
 ### 仪表板
 ![Dashboard](docs/images/dashboard.png)
-
 ### 节点管理
 ![Nodes](docs/images/nodes.png)
-
 ### 配置管理
 ![Config](docs/images/config.png)
-
 ### 通知管理
 ![Notification](docs/images/notification.png)
 
 ## 🏗️ 技术栈
+
+<table>
+<tr>
+<td>
 
 ### 后端
 - **Go 1.21+** - 高性能后端服务
@@ -68,12 +82,19 @@
 - **SQLite** - 轻量级数据库
 - **SSH** - 远程节点管理
 
+</td>
+<td>
+
 ### 前端
 - **React 18** - 用户界面
 - **Ant Design 5** - UI 组件库
 - **Axios** - HTTP 客户端
 - **React Router** - 路由管理
 - **Monaco Editor** - 代码编辑器
+
+</td>
+</tr>
+</table>
 
 ## 🚀 快速开始
 
@@ -85,7 +106,32 @@
 
 #### 部署步骤
 
-1. **克隆项目**
+**1. 克隆项目**
 ```bash
 git clone https://github.com/almightyyantao/smartdns-manager.git
 cd smartdns-manager
+```
+
+---
+
+## 🤝 贡献
+
+欢迎贡献代码！请查看 [贡献指南](CONTRIBUTING.md)。
+
+## 📝 开源协议
+
+本项目基于 [MIT License](LICENSE) 开源。
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=almightyyantao/smartdns-manager&type=Date)](https://star-history.com/#almightyyantao/smartdns-manager&Date)
+
+---
+
+<div align="center">
+
+**如果这个项目对你有帮助，请点个 ⭐ Star 支持一下！**
+
+Made with ❤️ by [yantao](https://github.com/almightyyantao)
+
+</div>
