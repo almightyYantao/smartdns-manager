@@ -18,6 +18,8 @@ services:
       - CLICKHOUSE_DB=smartdns_logs
       - CLICKHOUSE_USER=smartdns
       - CLICKHOUSE_PASSWORD=your_password
+      - GOMAXPROCS=2
+      - GOGC=200
     depends_on:
       clickhouse:
         condition: service_healthy
