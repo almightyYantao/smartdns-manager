@@ -12,6 +12,7 @@ import {
   Popconfirm,
   InputNumber,
   Switch,
+  Spin,
 } from 'antd';
 import {
   PlusOutlined,
@@ -39,6 +40,8 @@ const DomainRuleManager = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  const [submitLoading, setSubmitLoading] = useState(false); // 新增：提交loading
+  const [deleteLoading, setDeleteLoading] = useState(false); // 新增：删除loading
   const [form] = Form.useForm();
   const [isDomainSet, setIsDomainSet] = useState(false);
 
@@ -111,16 +114,20 @@ const DomainRuleManager = () => {
 
   const handleDelete = async (id) => {
     try {
+      setDeleteLoading(true); // 新增：开始删除loading
       await deleteDomainRule(id);
       message.success('删除成功');
       loadRules();
     } catch (error) {
       message.error('删除失败');
+    } finally {
+      setDeleteLoading(false); // 新增：结束删除loading
     }
   };
 
   const handleSubmit = async () => {
     try {
+      setSubmitLoading(true); // 新增：开始提交loading
       const values = await form.validateFields();
       
       const data = {
@@ -136,11 +143,17 @@ const DomainRuleManager = () => {
         await addDomainRule(data);
         message.success('添加成功');
       }
-
+      
       setModalVisible(false);
       loadRules();
     } catch (error) {
+      if (error.errorFields) {
+        // 表单验证错误，不显示错误消息
+        return;
+      }
       message.error('操作失败');
+    } finally {
+      setSubmitLoading(false); // 新增：结束提交loading
     }
   };
 
@@ -224,6 +237,7 @@ const DomainRuleManager = () => {
             size="small"
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
+            disabled={deleteLoading} // 新增：删除时禁用编辑按钮
           >
             编辑
           </Button>
@@ -232,8 +246,16 @@ const DomainRuleManager = () => {
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
+            disabled={deleteLoading} // 新增：删除时禁用
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button 
+              type="link" 
+              size="small" 
+              danger 
+              icon={<DeleteOutlined />}
+              loading={deleteLoading} // 新增：显示删除loading
+              disabled={deleteLoading}
+            >
               删除
             </Button>
           </Popconfirm>
@@ -245,7 +267,12 @@ const DomainRuleManager = () => {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+        <Button 
+          type="primary" 
+          icon={<PlusOutlined />} 
+          onClick={handleAdd}
+          loading={loading} // 新增：加载时禁用添加按钮
+        >
           添加域名规则
         </Button>
         <span style={{ marginLeft: 16, color: '#666' }}>
@@ -274,101 +301,140 @@ const DomainRuleManager = () => {
         width={700}
         okText="确定"
         cancelText="取消"
+        confirmLoading={submitLoading} // 新增：提交时显示loading
+        maskClosable={!submitLoading} // 新增：提交时禁止点击遮罩关闭
+        closable={!submitLoading} // 新增：提交时禁止关闭
       >
-        <Form form={form} layout="vertical">
-          <Form.Item label="规则类型">
-            <Select
-              value={isDomainSet}
-              onChange={setIsDomainSet}
-              disabled={!!editingRule}
-            >
-              <Option value={false}>普通域名</Option>
-              <Option value={true}>域名集</Option>
-            </Select>
-          </Form.Item>
+        <Spin spinning={submitLoading} tip="正在处理，请稍候..."> {/* 新增：整体loading效果 */}
+          <Form form={form} layout="vertical">
+            <Form.Item label="规则类型">
+              <Select
+                value={isDomainSet}
+                onChange={setIsDomainSet}
+                disabled={!!editingRule || submitLoading} // 新增：提交时禁用
+              >
+                <Option value={false}>普通域名</Option>
+                <Option value={true}>域名集</Option>
+              </Select>
+            </Form.Item>
 
-          {isDomainSet ? (
+            {isDomainSet ? (
+              <Form.Item
+                name="domain_set_name"
+                label="域名集"
+                rules={[{ required: true, message: '请选择域名集' }]}
+              >
+                <Select 
+                  placeholder="选择域名集"
+                  disabled={submitLoading} // 新增：提交时禁用
+                >
+                  {domainSets.map((ds) => (
+                    <Option key={ds.name} value={ds.name}>
+                      {ds.name} ({ds.domain_count} 个域名)
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            ) : (
+              <Form.Item
+                name="domain"
+                label="域名"
+                rules={[{ required: true, message: '请输入域名' }]}
+                extra="支持通配符，例如: *.example.com"
+              >
+                <Input 
+                  placeholder="例如: example.com 或 *.example.com"
+                  disabled={submitLoading} // 新增：提交时禁用
+                />
+              </Form.Item>
+            )}
+
+            <Form.Item name="address" label="地址（-address）" extra="指定返回的IP地址">
+              <Input 
+                placeholder="例如: 1.2.3.4"
+                disabled={submitLoading} // 新增：提交时禁用
+              />
+            </Form.Item>
+
             <Form.Item
-              name="domain_set_name"
-              label="域名集"
-              rules={[{ required: true, message: '请选择域名集' }]}
+              name="nameserver"
+              label="命名服务器（-nameserver）"
+              extra="指定使用的上游DNS服务器组"
             >
-              <Select placeholder="选择域名集">
-                {domainSets.map((ds) => (
-                  <Option key={ds.name} value={ds.name}>
-                    {ds.name} ({ds.domain_count} 个域名)
+              <Select 
+                placeholder="选择服务器组" 
+                allowClear
+                disabled={submitLoading} // 新增：提交时禁用
+              >
+                {serverGroups.map((group) => (
+                  <Option key={group} value={group}>
+                    {group}
                   </Option>
                 ))}
               </Select>
             </Form.Item>
-          ) : (
+
             <Form.Item
-              name="domain"
-              label="域名"
-              rules={[{ required: true, message: '请输入域名' }]}
-              extra="支持通配符，例如: *.example.com"
+              name="speed_check_mode"
+              label="速度检查模式（-speed-check-mode）"
             >
-              <Input placeholder="例如: example.com 或 *.example.com" />
+              <Select 
+                placeholder="选择速度检查模式" 
+                allowClear
+                disabled={submitLoading} // 新增：提交时禁用
+              >
+                <Option value="ping">ping</Option>
+                <Option value="tcp:80">tcp:80</Option>
+                <Option value="tcp:443">tcp:443</Option>
+                <Option value="none">none</Option>
+              </Select>
             </Form.Item>
-          )}
 
-          <Form.Item name="address" label="地址（-address）" extra="指定返回的IP地址">
-            <Input placeholder="例如: 1.2.3.4" />
-          </Form.Item>
+            <Form.Item name="other_options" label="其他选项">
+              <Input 
+                placeholder="其他命令行选项"
+                disabled={submitLoading} // 新增：提交时禁用
+              />
+            </Form.Item>
 
-          <Form.Item
-            name="nameserver"
-            label="命名服务器（-nameserver）"
-            extra="指定使用的上游DNS服务器组"
-          >
-            <Select placeholder="选择服务器组" allowClear>
-              {serverGroups.map((group) => (
-                <Option key={group} value={group}>
-                  {group}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+            <Form.Item
+              name="priority"
+              label="优先级"
+              extra="数字越大优先级越高"
+              initialValue={0}
+            >
+              <InputNumber 
+                min={0} 
+                max={100} 
+                style={{ width: '100%' }}
+                disabled={submitLoading} // 新增：提交时禁用
+              />
+            </Form.Item>
 
-          <Form.Item
-            name="speed_check_mode"
-            label="速度检查模式（-speed-check-mode）"
-          >
-            <Select placeholder="选择速度检查模式" allowClear>
-              <Option value="ping">ping</Option>
-              <Option value="tcp:80">tcp:80</Option>
-              <Option value="tcp:443">tcp:443</Option>
-              <Option value="none">none</Option>
-            </Select>
-          </Form.Item>
+            <Form.Item name="node_ids" label="应用到节点" extra="不选择则应用到所有节点">
+              <Select 
+                mode="multiple" 
+                placeholder="选择节点" 
+                allowClear
+                disabled={submitLoading} // 新增：提交时禁用
+              >
+                {nodes.map((node) => (
+                  <Option key={node.id} value={node.id}>
+                    {node.name}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
 
-          <Form.Item name="other_options" label="其他选项">
-            <Input placeholder="其他命令行选项" />
-          </Form.Item>
-
-          <Form.Item
-            name="priority"
-            label="优先级"
-            extra="数字越大优先级越高"
-            initialValue={0}
-          >
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Form.Item name="node_ids" label="应用到节点" extra="不选择则应用到所有节点">
-            <Select mode="multiple" placeholder="选择节点" allowClear>
-              {nodes.map((node) => (
-                <Option key={node.id} value={node.id}>
-                  {node.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={2} placeholder="规则描述" />
-          </Form.Item>
-        </Form>
+            <Form.Item name="description" label="描述">
+              <Input.TextArea 
+                rows={2} 
+                placeholder="规则描述"
+                disabled={submitLoading} // 新增：提交时禁用
+              />
+            </Form.Item>
+          </Form>
+        </Spin>
       </Modal>
     </div>
   );

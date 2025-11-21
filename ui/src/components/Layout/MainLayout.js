@@ -40,6 +40,10 @@ const MainLayout = () => {
           key: "/backup",
           label: "备份管理",
         },
+        {
+          key: "/logs",
+          label: "日志管理",
+        },
       ],
     },
     {

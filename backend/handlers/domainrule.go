@@ -108,6 +108,7 @@ func UpdateDomainRule(c *gin.Context) {
 		return
 	}
 
+	// 查询现有规则
 	var rule models.DomainRule
 	if err := database.DB.First(&rule, ruleID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -117,15 +118,55 @@ func UpdateDomainRule(c *gin.Context) {
 		return
 	}
 
-	if err := c.ShouldBindJSON(&rule); err != nil {
+	// 使用请求结构体接收数据
+	var req models.UpdateDomainRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "请求参数错误",
+			"message": "请求参数错误: " + err.Error(),
 		})
 		return
 	}
 
-	database.DB.Save(&rule)
+	// 更新字段
+	rule.Domain = req.Domain
+	rule.IsDomainSet = req.IsDomainSet
+	rule.DomainSetName = req.DomainSetName
+	rule.Address = req.Address
+	rule.Nameserver = req.Nameserver
+	rule.SpeedCheckMode = req.SpeedCheckMode
+	rule.OtherOptions = req.OtherOptions
+	rule.Priority = req.Priority
+	rule.Description = req.Description
+
+	// 处理 Enabled（如果传了就更新，没传就保持原值）
+	if req.Enabled != nil {
+		rule.Enabled = *req.Enabled
+	}
+
+	// 处理 NodeIDs：将数组转换为 JSON 字符串
+	if req.NodeIDs != nil {
+		nodeIDsJSON, err := json.Marshal(req.NodeIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "节点ID序列化失败",
+			})
+			return
+		}
+		rule.NodeIDs = string(nodeIDsJSON)
+	} else {
+		rule.NodeIDs = "[]"
+	}
+
+	// 保存到数据库
+	if err := database.DB.Save(&rule).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "规则更新失败: " + err.Error(),
+		})
+		return
+	}
 
 	// 同步到节点
 	go domainRuleService.SyncDomainRuleToNodes(&rule)

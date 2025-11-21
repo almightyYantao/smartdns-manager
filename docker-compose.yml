@@ -12,6 +12,37 @@ services:
       - ./logs:/app/logs
     environment:
       - TZ=Asia/Shanghai
+      - LOG_STORAGE_TYPE=clickhouse
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DB=smartdns_logs
+      - CLICKHOUSE_USER=smartdns
+      - CLICKHOUSE_PASSWORD=your_password
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - smartdns-network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: smartdns-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: smartdns_logs
+      CLICKHOUSE_USER: smartdns
+      CLICKHOUSE_PASSWORD: your_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ./clickhouse/data:/var/lib/clickhouse
+      - ./clickhouse/logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     networks:
       - smartdns-network
 

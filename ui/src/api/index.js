@@ -10,3 +10,4 @@ export * from "./modules/nameservers";
 export * from "./modules/dashboard";
 export * from "./modules/sync";
 export * from "./modules/notifications";
+export * from './modules/logs';

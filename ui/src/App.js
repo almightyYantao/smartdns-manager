@@ -21,6 +21,7 @@ import DomainRuleManager from "./components/DomainRule/DomainRuleManager";
 import NameserverManager from "./components/Nameserver/NameserverManager";
 import GroupManager from "./components/GroupManager/GroupManager";
 import Backup from "./pages/Backup";
+import Logs from "./pages/Logs";
 
 moment.locale("zh-cn");
 
@@ -88,8 +89,8 @@ function App() {
                   </Card>
                 }
               />
+              <Route path="logs" element={<Logs />} />
             </Route>
-
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

@@ -39,6 +39,43 @@ func main() {
 	healthChecker := services.NewNodeHealthChecker(time.Duration(statusTime) * time.Second)
 	healthChecker.Start()
 
+	// 初始化日志监控服务
+	var logMonitorService services.LogMonitorServiceInterface
+
+	if config.IsClickHouseEnabled() {
+		// 使用 ClickHouse 存储日志
+		log.Println("📊 使用 ClickHouse 存储 DNS 日志")
+
+		// 初始化 ClickHouse
+		database.InitClickHouse()
+
+		// 创建 ClickHouse 日志监控服务
+		logMonitorService = services.NewLogMonitorServiceCH(database.DB)
+
+		log.Println("✅ ClickHouse 日志服务已启动")
+	} else {
+		// 使用 SQLite 存储日志
+		log.Println("📊 使用 SQLite 存储 DNS 日志")
+
+		// 创建 SQLite 日志监控服务
+		logMonitorService = services.NewLogMonitorService(database.DB)
+
+		log.Println("✅ SQLite 日志服务已启动")
+	}
+
+	// 初始化处理器
+	handlers.InitLogMonitorHandler(logMonitorService)
+
+	// 确保程序退出时停止所有监控
+	defer func() {
+		log.Println("🛑 正在停止所有日志监控...")
+		logMonitorService.StopAll()
+
+		if config.IsClickHouseEnabled() {
+			database.CloseClickHouse()
+		}
+	}()
+
 	defer healthChecker.Stop()
 
 	// 公开路由
@@ -46,6 +83,19 @@ func main() {
 	{
 		public.POST("/login", handlers.Login)
 		public.POST("/register", handlers.Register)
+	}
+
+	// 注册路由
+	logGroup := r.Group("/api/dns-logs")
+	logGroup.Use(middleware.AuthMiddleware())
+	logGroup.Use(middleware.AdminRequired())
+	{
+		logGroup.POST("/:id/log-monitor/start", handlers.StartNodeLogMonitor)     // 启动监控
+		logGroup.POST("/:id/log-monitor/stop", handlers.StopNodeLogMonitor)       // 停止监控
+		logGroup.GET("/:id/log-monitor/status", handlers.GetNodeLogMonitorStatus) // 监控状态
+		logGroup.GET("/:id/logs/stats", handlers.GetNodeLogStats)                 // 日志统计
+		logGroup.POST("/:id/logs/clean", handlers.CleanNodeLogs)                  // 清理日志
+		logGroup.GET("", handlers.GetDNSLogs)                                     // 获取日志列表（支持按节点过滤）
 	}
 
 	// 需要认证的路由

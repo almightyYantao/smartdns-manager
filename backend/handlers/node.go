@@ -17,15 +17,11 @@ import (
 // GetNodes 获取所有节点
 func GetNodes(c *gin.Context) {
 	var nodes []models.Node
-
 	query := database.DB
 
-	// 支持标签筛选
 	if tags := c.Query("tags"); tags != "" {
 		query = query.Where("tags LIKE ?", "%"+tags+"%")
 	}
-
-	// 支持状态筛选
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -65,10 +61,13 @@ func AddNode(c *gin.Context) {
 	if node.ConfigPath == "" {
 		node.ConfigPath = "/etc/smartdns/smartdns.conf"
 	}
+	if node.LogPath == "" {
+		node.LogPath = "/var/log/audit/audit.log"
+	}
 	node.Status = "unknown"
+	node.LogMonitorEnabled = false
 	node.LastCheck = time.Now()
 
-	// 保存到数据库
 	if err := database.DB.Create(&node).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -78,7 +77,6 @@ func AddNode(c *gin.Context) {
 		return
 	}
 
-	// 异步测试连接
 	go testAndUpdateNodeStatus(&node)
 
 	c.JSON(http.StatusCreated, gin.H{

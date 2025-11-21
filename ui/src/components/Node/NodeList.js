@@ -282,8 +282,7 @@ const NodeList = () => {
               size="small"
               icon={<SettingOutlined />}
               onClick={() => handleInitNode(record)}
-            >
-            </Button>
+            ></Button>
           </Tooltip>
           <Tooltip title="查看状态">
             <Button
@@ -404,8 +403,13 @@ const NodeList = () => {
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         footer={null}
-        width={600}
+        width={700}
         destroyOnClose
+        bodyStyle={{
+          maxHeight: "calc(100vh - 200px)",
+          overflowY: "auto",
+          paddingRight: "8px",
+        }}
       >
         <NodeForm
           node={editingNode}

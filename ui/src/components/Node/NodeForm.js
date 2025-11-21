@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, InputNumber, Button, message, Select, Space } from 'antd';
+import { Form, Input, InputNumber, Button, message, Select, Space, Divider } from 'antd';
 import { addNode, updateNode } from '../../api';
 
 const { TextArea } = Input;
@@ -51,6 +51,7 @@ const NodeForm = ({ node, onSuccess, onCancel }) => {
       initialValues={{
         port: 22,
         config_path: '/etc/smartdns/smartdns.conf',
+        log_path: '/var/log/smartdns/smartdns.log', // 新增默认值
       }}
     >
       <Form.Item
@@ -110,19 +111,34 @@ const NodeForm = ({ node, onSuccess, onCancel }) => {
         </Form.Item>
       )}
 
+      <Divider orientation="left">SmartDNS 配置</Divider>
+
       <Form.Item
         name="config_path"
         label="配置文件路径"
         rules={[{ required: true, message: '请输入配置文件路径' }]}
+        extra="SmartDNS 配置文件的完整路径"
       >
         <Input placeholder="/etc/smartdns/smartdns.conf" />
       </Form.Item>
 
       <Form.Item
+        name="log_path"
+        label="日志文件路径"
+        rules={[{ required: true, message: '请输入日志文件路径' }]}
+        extra="SmartDNS 日志文件的完整路径，用于日志监控功能"
+      >
+        <Input placeholder="/var/log/audit/audit.log" />
+      </Form.Item>
+
+      <Divider orientation="left">其他信息</Divider>
+
+      <Form.Item
         name="tags"
         label="标签"
+        extra="用于分类管理，多个标签用逗号分隔"
       >
-        <Input placeholder="标签，多个用逗号分隔" />
+        <Input placeholder="例如: 生产环境,主节点" />
       </Form.Item>
 
       <Form.Item

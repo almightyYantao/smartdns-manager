@@ -51,6 +51,7 @@ func InitDB() {
 		&models.NotificationLog{},
 		&models.InitLog{},
 		&models.Backup{},
+		&models.DNSLog{},
 	)
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
@@ -61,6 +62,9 @@ func InitDB() {
 	DB.Model(&models.AddressMap{}).Where("enabled IS NULL").Update("enabled", true)
 	DB.Model(&models.DNSServer{}).Where("node_ids IS NULL").Update("node_ids", "[]")
 	DB.Model(&models.DNSServer{}).Where("enabled IS NULL").Update("enabled", true)
+
+	DB.Model(&models.Node{}).Where("log_path IS NULL OR log_path = ''").Update("log_path", "/var/log/audit/audit.log")
+	DB.Model(&models.Node{}).Where("log_monitor_enabled IS NULL").Update("log_monitor_enabled", false)
 
 	log.Printf("Database initialized successfully at: %s", dbPath)
 

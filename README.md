@@ -27,7 +27,7 @@
 
 - **多节点管理** - 集中管理多个 SmartDNS 节点，统一配置和监控
 - **配置同步** - 自动同步配置到所有节点，支持批量操作
-- **实时监控** - 实时查看节点状态、资源使用情况和服务运行状态
+- **实时监控** - 实时查看节点状态、资源使用情况、日志解析和服务运行状态
 - **可视化配置** - 通过 Web 界面直观地管理 DNS 服务器和地址映射
 - **配置备份** - 自动备份配置文件，支持一键恢复
 - **消息推送** - 支持企业微信、钉钉、飞书等多种通知渠道
@@ -110,6 +110,41 @@
 ```bash
 git clone https://github.com/almightyyantao/smartdns-manager.git
 cd smartdns-manager
+```
+
+### clickhouse 配置
+
+如果要开启日志监听的话，最好是配置clickhouse，sqllite的日志监听性能会比较差
+
+```bash
+LOG_STORAGE_TYPE=clickhouse
+CLICKHOUSE_HOST=xxx.xxx.xxx.xxx
+CLICKHOUSE_PORT=9000
+CLICKHOUSE_DB=smartdns_logs
+CLICKHOUSE_USER=smartdns
+CLICKHOUSE_PASSWORD=your_password
+```
+
+### docker compose 新增以下内容
+
+```dockerfile
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: smartdns-clickhouse
+    ports:
+      - "8123:8123"  # HTTP
+      - "9000:9000"  # Native
+    environment:
+      CLICKHOUSE_DB: smartdns_logs
+      CLICKHOUSE_USER: smartdns
+      CLICKHOUSE_PASSWORD: your_password
+    volumes:
+      - ./clickhouse/data:/var/lib/clickhouse
+      - ./clickhouse/logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
 ```
 
 ---

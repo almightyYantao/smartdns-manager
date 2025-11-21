@@ -3,18 +3,20 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	ServerPort  string
-	JWTSecret   string
-	DBPath      string
-	BackupPath  string
-	InitVersion string
-	InitBaseURL string
-	StatusTime  string
+	ServerPort     string
+	JWTSecret      string
+	DBPath         string
+	BackupPath     string
+	InitVersion    string
+	InitBaseURL    string
+	StatusTime     string
+	LogStorageType string
 }
 
 var config *Config
@@ -27,15 +29,18 @@ func GetConfig() *Config {
 			log.Println("Warning: .env file not found, using defaults")
 		}
 
+		logStorageType := strings.ToLower(getEnv("LOG_STORAGE_TYPE", "sqlite"))
+
 		config = &Config{
 			ServerPort: getEnv("SERVER_PORT", "3001"),
 			JWTSecret:  getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
 			// 使用绝对路径，方便 Docker 挂载
-			DBPath:      getEnv("DB_PATH", "/app/data/smartdns.db"),
-			BackupPath:  getEnv("BACKUP_PATH", "/etc/smartdns/backups"),
-			InitVersion: getEnv("INIT_VERSION", "1.2024.06.12-2222"),
-			StatusTime:  getEnv("STATUS_CHECK_TIME", "10"),
-			InitBaseURL: getEnv("INIT_BASE_URL", "https://github.com/pymumu/smartdns/releases/download/Release46"),
+			DBPath:         getEnv("DB_PATH", "/app/data/smartdns.db"),
+			BackupPath:     getEnv("BACKUP_PATH", "/etc/smartdns/backups"),
+			InitVersion:    getEnv("INIT_VERSION", "1.2024.06.12-2222"),
+			StatusTime:     getEnv("STATUS_CHECK_TIME", "10"),
+			InitBaseURL:    getEnv("INIT_BASE_URL", "https://github.com/pymumu/smartdns/releases/download/Release46"),
+			LogStorageType: logStorageType,
 		}
 
 		// 打印配置信息（生产环境可以去掉敏感信息）
