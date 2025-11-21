@@ -58,7 +58,7 @@ func NewLogMonitorServiceCH(db *gorm.DB) *LogMonitorServiceCH {
 	}
 
 	// 启动批量刷新协程
-	go service.flushLoop()
+	// go service.flushLoop()
 
 	log.Println("✅ ClickHouse 日志监控服务初始化成功")
 	return service
@@ -145,6 +145,9 @@ func (s *LogMonitorServiceCH) StartNodeMonitor(nodeID uint) error {
 	// 启动监控协程
 	go monitor.startMonitoring(s.batchSize)
 
+	// 启动独立的刷新协程
+	go monitor.autoFlushLoop()
+
 	// 更新节点状态
 	s.db.Model(&models.Node{}).Where("id = ?", nodeID).Updates(map[string]interface{}{
 		"log_monitor_enabled": true,
@@ -152,6 +155,21 @@ func (s *LogMonitorServiceCH) StartNodeMonitor(nodeID uint) error {
 
 	log.Printf("✅ 节点 %d (%s) 的日志监控已启动", nodeID, node.Name)
 	return nil
+}
+
+// autoFlushLoop 每个节点独立的自动刷新协程
+func (m *NodeMonitorCH) autoFlushLoop() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-ticker.C:
+			m.flushBatch()
+		}
+	}
 }
 
 // StopNodeMonitor 停止指定节点的日志监控
@@ -255,7 +273,7 @@ func (m *NodeMonitorCH) startMonitoring(batchSize int) {
 				lineCount++
 
 				// 每处理 100 行打印一次日志
-				if lineCount%100 == 0 {
+				if lineCount%5000 == 0 {
 					log.Printf("📊 节点 %d 已处理 %d 行日志", m.nodeID, lineCount)
 				}
 
