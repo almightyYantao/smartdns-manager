@@ -1,14 +1,12 @@
 name: Create Release Packages
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_run:
     workflows: ["Build Binaries"]
     types:
       - completed
-    branches:
-      - main
-      - master
-    tags:
-      - 'v*'
 
 env:
   BINARY_NAME: smartdns-log-agent
@@ -17,7 +15,7 @@ env:
 jobs:
   create-packages:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
     strategy:
       matrix:
         suffix: [linux-amd64, linux-arm64, linux-armv7, darwin-amd64, darwin-arm64, windows-amd64.exe]
@@ -26,12 +24,62 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 如果是 tag 推送，先等待 binaries 构建完成
+      - name: Wait for binaries (if tag push)
+        if: github.event_name == 'push'
+        run: |
+          echo "Waiting for binaries to be built..."
+          sleep 120  # 等待2分钟让 binaries 构建
+
       - name: Download binary artifact
         uses: actions/download-artifact@v4
         with:
           name: binary-${{ matrix.suffix }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ github.event.workflow_run.id || github.run_id }}
+        continue-on-error: true
+
+      # 如果上面失败，尝试从同一个 workflow run 下载
+      - name: Download binary artifact (fallback)
+        if: failure()
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.suffix }}
+        continue-on-error: true
+
+      # 如果还是失败，手动构建
+      - name: Build binary (fallback)
+        if: failure()
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          cd ${{ env.AGENT_DIR }}
+          
+          # 设置构建参数
+          case "${{ matrix.suffix }}" in
+            "linux-amd64") GOOS=linux GOARCH=amd64 ;;
+            "linux-arm64") GOOS=linux GOARCH=arm64 ;;
+            "linux-armv7") GOOS=linux GOARCH=arm GOARM=7 ;;
+            "darwin-amd64") GOOS=darwin GOARCH=amd64 ;;
+            "darwin-arm64") GOOS=darwin GOARCH=arm64 ;;
+            "windows-amd64.exe") GOOS=windows GOARCH=amd64 ;;
+          esac
+          
+          CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH GOARM=$GOARM \
+            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" \
+            -o ../${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
+
+      - name: Verify binary exists
+        run: |
+          if [ ! -f "${{ env.BINARY_NAME }}-${{ matrix.suffix }}" ]; then
+            echo "Binary not found: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}"
+            ls -la
+            exit 1
+          fi
+          echo "Binary found: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}"
 
       - name: Create release package
         run: |
@@ -40,10 +88,10 @@ jobs:
           # 复制二进制文件
           cp ${{ env.BINARY_NAME }}-${{ matrix.suffix }} release-${{ matrix.suffix }}/
           
-          # 复制配置文件
-          cp ${{ env.AGENT_DIR }}/docker-compose.yml release-${{ matrix.suffix }}/
-          cp ${{ env.AGENT_DIR }}/config.env release-${{ matrix.suffix }}/
-          cp ${{ env.AGENT_DIR }}/README.md release-${{ matrix.suffix }}/
+          # 复制配置文件（使用 2>/dev/null || true 避免文件不存在的错误）
+          cp ${{ env.AGENT_DIR }}/docker-compose.yml release-${{ matrix.suffix }}/ 2>/dev/null || echo "docker-compose.yml not found"
+          cp ${{ env.AGENT_DIR }}/config.env release-${{ matrix.suffix }}/ 2>/dev/null || echo "config.env not found"
+          cp ${{ env.AGENT_DIR }}/README.md release-${{ matrix.suffix }}/ 2>/dev/null || echo "README.md not found"
           
           # 复制安装脚本（如果存在）
           if [ -f "${{ env.AGENT_DIR }}/install.sh" ]; then
@@ -54,6 +102,9 @@ jobs:
           if [ -f "${{ env.AGENT_DIR }}/smartdns-log-agent.service" ]; then
             cp ${{ env.AGENT_DIR }}/smartdns-log-agent.service release-${{ matrix.suffix }}/
           fi
+          
+          echo "Package contents:"
+          ls -la release-${{ matrix.suffix }}/
 
       - name: Generate management script
         run: |
@@ -84,7 +135,13 @@ jobs:
                   ;;
               install)
                   echo "Installing $SERVICE_NAME..."
-                  sudo cp $BINARY_NAME-* /usr/local/bin/$BINARY_NAME
+                  # 查找二进制文件（支持不同的命名格式）
+                  for binary in $BINARY_NAME-* $BINARY_NAME; do
+                    if [ -f "$binary" ] && [ -x "$binary" ]; then
+                      sudo cp "$binary" /usr/local/bin/$BINARY_NAME
+                      break
+                    fi
+                  done
                   sudo chmod +x /usr/local/bin/$BINARY_NAME
           
                   # 创建用户
@@ -158,13 +215,18 @@ jobs:
           
           ## 配置说明
           
-          编辑 `/etc/smartdns-log-agent/config` 文件：
+          编辑 `/etc/smartdns-log-agent/config` 文件或环境变量：
           
           ```bash
           NODE_ID=1
           CLICKHOUSE_HOST=localhost
+          CLICKHOUSE_PORT=9000
+          CLICKHOUSE_DB=smartdns_logs
+          CLICKHOUSE_USER=default
           CLICKHOUSE_PASSWORD=your-password
           LOG_FILE=/var/log/smartdns/smartdns.log
+          BATCH_SIZE=1000
+          FLUSH_INTERVAL_SEC=2
           ```
           
           ## 管理命令
@@ -183,6 +245,9 @@ jobs:
       - name: Create package
         run: |
           tar -czf ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz -C release-${{ matrix.suffix }} .
+          
+          echo "Package created:"
+          ls -la ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
