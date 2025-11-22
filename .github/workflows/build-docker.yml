@@ -5,7 +5,7 @@ on:
       - main
       - master
     tags:
-      - 'v*'
+      - 'docker-v*'
   pull_request:
     branches:
       - main

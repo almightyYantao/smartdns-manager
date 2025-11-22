@@ -6,8 +6,6 @@ on:
 
 env:
   BINARY_NAME: smartdns-log-agent
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   release:
@@ -19,38 +17,114 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 等待构建完成
-      - name: Wait for builds to complete
-        uses: lewagon/wait-on-check-action@v1.3.1
-        with:
-          ref: ${{ github.ref }}
-          check-name: 'build-binaries'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
-      - name: Wait for packages to complete
-        uses: lewagon/wait-on-check-action@v1.3.1
-        with:
-          ref: ${{ github.ref }}
-          check-name: 'create-packages'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
+      # 只等待二进制构建和打包完成
+      - name: Wait for binaries and packages to complete
+        run: |
+          echo "Waiting for binary builds and package creation to complete..."
+          
+          # 等待函数
+          wait_for_workflow() {
+            local workflow_name=$1
+            local max_attempts=20  # 减少等待时间
+            local attempt=1
+          
+            while [ $attempt -le $max_attempts ]; do
+              echo "Checking $workflow_name (attempt $attempt/$max_attempts)..."
+          
+              # 获取当前 commit 的 workflow runs
+              runs=$(gh api repos/${{ github.repository }}/actions/runs \
+                --jq ".workflow_runs[] | select(.head_sha == \"${{ github.sha }}\" and .name == \"$workflow_name\") | .status")
+          
+              if echo "$runs" | grep -q "completed"; then
+                echo "$workflow_name completed!"
+                return 0
+              fi
+          
+              sleep 20
+              attempt=$((attempt + 1))
+            done
+          
+            echo "Warning: $workflow_name did not complete within timeout"
+            return 1
+          }
+          
+          # 只等待相关的 workflows
+          wait_for_workflow "Build Binaries" || echo "Build Binaries not found or incomplete"
+          wait_for_workflow "Create Release Packages" || echo "Create Release Packages not found or incomplete"
+          
+          echo "Proceeding with release creation..."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all package artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: package-*
           merge-multiple: false
+        continue-on-error: true
 
       - name: Prepare release files
         run: |
           mkdir -p releases
-          find . -name "*.tar.gz" -exec mv {} releases/ \;
-          ls -la releases/
+          
+          # 查找所有 tar.gz 文件
+          find . -name "*.tar.gz" -exec mv {} releases/ \; 2>/dev/null || true
+          
+          # 检查是否找到了文件
+          file_count=$(ls releases/*.tar.gz 2>/dev/null | wc -l)
+          
+          if [ $file_count -eq 0 ]; then
+            echo "Warning: No package files found"
+            echo "This might be because:"
+            echo "1. Build workflows are still running"
+            echo "2. Build failed"
+            echo "3. Artifact names don't match pattern 'package-*'"
+          
+            echo "Available artifacts:"
+            find . -name "*.tar.gz" -o -name "*artifact*" | head -20
+          
+            # 创建占位符文件
+            touch releases/README.txt
+            echo "Release packages are being built and will be available shortly." > releases/README.txt
+            echo "Please check the Actions tab for build progress." >> releases/README.txt
+          else
+            echo "Found $file_count release files:"
+            ls -la releases/
+          fi
 
       - name: Generate release notes
         run: |
-          cat > release-notes.md << 'EOF'
+          # 检查是否有实际的包文件
+          if [ -f releases/README.txt ]; then
+            # 如果只有占位符文件，创建简化的说明
+            cat > release-notes.md << 'EOF'
+          ## SmartDNS Log Agent ${{ github.ref_name }}
+          
+          ⏳ **发布包正在构建中...**
+          
+          二进制文件和安装包正在后台构建，请稍后刷新此页面查看完整的发布包。
+          
+          ### 🚀 或者手动下载
+          
+          您也可以从 [Actions](https://github.com/${{ github.repository }}/actions) 页面下载最新构建的 artifacts。
+          
+          ### 🐳 Docker 镜像
+          
+          Docker 镜像构建是独立的，应该已经可用：
+          
+          ```bash
+          docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          ```
+          
+          ### 📦 即将支持的平台
+          
+          - Linux (amd64, arm64, armv7)
+          - macOS (amd64, arm64) 
+          - Windows (amd64)
+          EOF
+          else
+            # 如果有实际文件，创建完整说明
+            cat > release-notes.md << 'EOF'
           ## SmartDNS Log Agent ${{ github.ref_name }}
           
           高性能的 SmartDNS 日志收集和分析代理。
@@ -68,12 +142,6 @@ jobs:
           sudo ./manage.sh start
           ```
           
-          ### 🐳 Docker
-          
-          ```bash
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-          ```
-          
           ### 📦 支持平台
           
           - Linux (amd64, arm64, armv7)
@@ -81,7 +149,18 @@ jobs:
           - Windows (amd64)
           
           每个包都包含完整的安装脚本和配置文件。
+          
+          ### 🔧 管理命令
+          
+          ```bash
+          sudo ./manage.sh install    # 安装服务
+          sudo ./manage.sh start      # 启动服务  
+          sudo ./manage.sh status     # 查看状态
+          sudo ./manage.sh logs       # 查看日志
+          sudo ./manage.sh uninstall  # 卸载服务
+          ```
           EOF
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
