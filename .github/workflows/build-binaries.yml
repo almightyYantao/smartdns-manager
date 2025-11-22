@@ -1,15 +1,8 @@
 name: Build Binaries
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
-      - master
+      - 'agent-v*'
 
 env:
   BINARY_NAME: smartdns-log-agent

@@ -2,7 +2,7 @@ name: Create Release Packages
 on:
   push:
     tags:
-      - 'v*'
+      - 'agent-v*'
   workflow_run:
     workflows: ["Build Binaries"]
     types:

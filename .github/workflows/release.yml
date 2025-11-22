@@ -2,7 +2,7 @@ name: Create Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'agent-v*'
 
 env:
   BINARY_NAME: smartdns-log-agent
@@ -222,27 +222,7 @@ jobs:
           - Linux (amd64, arm64, armv7)
           - macOS (amd64, arm64) 
           - Windows (amd64)
-          
-          ### 🐳 Docker 镜像
-          
-          Docker 镜像独立构建，应已可用：
-          
-          \`\`\`bash
-          docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-          \`\`\`
-          
-          ### 🔧 管理命令
-          
-          \`\`\`bash
-          sudo ./manage.sh install    # 安装服务
-          sudo ./manage.sh start      # 启动服务  
-          sudo ./manage.sh status     # 查看状态
-          sudo ./manage.sh logs       # 查看日志
-          sudo ./manage.sh uninstall  # 卸载服务
-          \`\`\`
-          
           ---
-          
           *构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')*
           EOF
 

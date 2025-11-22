@@ -1,15 +1,8 @@
 name: Build Docker Image
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
       - 'docker-v*'
-  pull_request:
-    branches:
-      - main
-      - master
 
 env:
   REGISTRY: ghcr.io

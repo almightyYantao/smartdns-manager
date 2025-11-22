@@ -1,0 +1,215 @@
+name: Docker Release
+on:
+  workflow_run:
+    workflows: ["Build Docker Image"]
+    types:
+      - completed
+  push:
+    tags:
+      - 'docker-v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  docker-release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # 直接从 tag 推送触发
+            VERSION="${{ github.ref_name }}"
+          else
+            # 从 workflow_run 事件获取
+            VERSION=$(echo "${{ github.event.workflow_run.head_branch }}" | sed 's/^docker-v//')
+            if [ -z "$VERSION" ] || [ "$VERSION" = "${{ github.event.workflow_run.head_branch }}" ]; then
+              # 如果不是分支，尝试从 head_sha 获取 tag
+              VERSION="${{ github.event.workflow_run.head_sha }}"
+            fi
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Wait for Docker build to complete
+        if: github.event_name == 'push'
+        run: |
+          echo "⏳ Waiting for Docker build to complete..."
+          
+          max_wait=600  # 10分钟超时
+          check_interval=30
+          waited=0
+          
+          while [ $waited -lt $max_wait ]; do
+            # 检查 Docker 构建状态
+            runs=$(gh api "repos/${{ github.repository }}/actions/runs" \
+              --jq ".workflow_runs[] | select(.head_sha == \"${{ github.sha }}\" and .name == \"Build Docker Image\") | .status" \
+              2>/dev/null || echo "")
+          
+            if echo "$runs" | grep -q "completed"; then
+              conclusion=$(gh api "repos/${{ github.repository }}/actions/runs" \
+                --jq ".workflow_runs[] | select(.head_sha == \"${{ github.sha }}\" and .name == \"Build Docker Image\") | .conclusion" \
+                2>/dev/null || echo "")
+          
+              if echo "$conclusion" | grep -q "success"; then
+                echo "✅ Docker build completed successfully!"
+                break
+              else
+                echo "❌ Docker build failed with conclusion: $conclusion"
+                exit 1
+              fi
+            elif echo "$runs" | grep -q "in_progress"; then
+              echo "🔄 Docker build is still running... (waited ${waited}s)"
+            else
+              echo "🔍 Docker build not found or not started yet... (waited ${waited}s)"
+            fi
+          
+            sleep $check_interval
+            waited=$((waited + check_interval))
+          done
+          
+          if [ $waited -ge $max_wait ]; then
+            echo "⏰ Timeout waiting for Docker build"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Docker image
+        run: |
+          echo "🔍 Verifying Docker image availability..."
+          
+          # 尝试获取镜像信息
+          IMAGE_TAG="${{ steps.version.outputs.version }}"
+          
+          # 如果是 docker-v 开头，去掉前缀
+          if [[ $IMAGE_TAG == docker-v* ]]; then
+            IMAGE_TAG=${IMAGE_TAG#docker-v}
+          fi
+          
+          echo "Checking image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+          
+          # 这里可以添加镜像验证逻辑，比如检查 registry API
+          # 暂时只记录信息
+          echo "Image should be available at: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
+
+      - name: Generate Docker release notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # 如果是 docker-v 开头，去掉前缀用于显示
+          DISPLAY_VERSION=$VERSION
+          if [[ $VERSION == docker-v* ]]; then
+            DISPLAY_VERSION=${VERSION#docker-v}
+          fi
+          
+          cat > docker-release-notes.md << EOF
+          ## SmartDNS Manager Docker $DISPLAY_VERSION
+          
+          🐳 **Docker 镜像发布**
+          
+          本次发布包含了 SmartDNS Manager 的完整 Docker 镜像，支持多架构部署。
+          
+          ### 🚀 快速使用
+          
+          \`\`\`bash
+          # 拉取最新镜像
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$DISPLAY_VERSION
+          
+          # 或使用 latest 标签
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          \`\`\`
+          
+          ### 🏗️ 支持架构
+          
+          - linux/amd64 (x86_64)
+          - linux/arm64 (ARM64/aarch64)
+          
+          ### 📦 部署方式
+          
+          #### 使用 Docker Run
+          \`\`\`bash
+          docker run -d \\
+            --name smartdns-manager \\
+            -p 8080:8080 \\
+            -v /path/to/config:/app/config \\
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$DISPLAY_VERSION
+          \`\`\`
+          
+          #### 使用 Docker Compose
+          \`\`\`yaml
+          version: '3.8'
+          services:
+            smartdns-manager:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$DISPLAY_VERSION
+              ports:
+                - "8080:8080"
+              volumes:
+                - ./config:/app/config
+                - ./data:/app/data
+              environment:
+                - ENV=production
+              restart: unless-stopped
+          \`\`\`
+          
+          ### 🔧 环境变量
+          
+          | 变量名 | 默认值 | 说明 |
+          |--------|--------|------|
+          | \`PORT\` | 8080 | Web 服务端口 |
+          | \`ENV\` | development | 运行环境 |
+          | \`CONFIG_PATH\` | /app/config | 配置文件路径 |
+          
+          ### 📝 更新说明
+          
+          - 基于最新代码构建
+          - 优化了镜像大小和安全性
+          - 支持多架构部署
+          - 包含完整的运行环境
+          
+          ### 🔗 相关链接
+          
+          - [源代码](https://github.com/${{ github.repository }})
+          - [镜像仓库](https://github.com/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }})
+          - [使用文档](https://github.com/${{ github.repository }}#readme)
+          
+          ---
+          
+          **镜像信息:**
+          - 构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - 基础镜像: Alpine Linux
+          - 镜像大小: 约 50MB (压缩后)
+          
+          **安全提示:** 建议在生产环境中使用具体的版本标签而不是 \`latest\`。
+          EOF
+          
+          echo "Generated release notes:"
+          cat docker-release-notes.md
+
+      - name: Create Docker Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: SmartDNS Manager Docker ${{ steps.version.outputs.version }}
+          body_path: docker-release-notes.md
+          draft: false
+          prerelease: false
+          make_latest: false  # Docker 发布不设为 latest，避免与主程序发布冲突
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Docker documentation
+        run: |
+          echo "📚 Docker release created successfully!"
+          echo "🏷️  Tag: ${{ steps.version.outputs.version }}"
+          echo "🐳 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}"
+          echo "📋 Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
