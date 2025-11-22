@@ -14,6 +14,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   BINARY_NAME: smartdns-log-agent
+  AGENT_DIR: agent
 jobs:
   build-binaries:
     runs-on: ubuntu-latest
@@ -53,7 +54,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('agent/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -64,12 +65,18 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
         run: |
+          # 进入 agent 目录
+          cd ${{ env.AGENT_DIR }}
+          
           # 构建二进制文件
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" -o ${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
+            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" -o ../${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
           else
-            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" -o ${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
+            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" -o ../${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
           fi
+          
+          # 返回根目录
+          cd ..
           
           # 验证二进制文件
           if [ "${{ matrix.goos }}" != "windows" ]; then
@@ -85,119 +92,244 @@ jobs:
           cp ${{ env.BINARY_NAME }}-${{ matrix.suffix }} release-${{ matrix.suffix }}/
           
           # 复制配置文件和脚本
-          cp docker-compose.yml release-${{ matrix.suffix }}/
-          cp install.sh release-${{ matrix.suffix }}/
-          cp manage.sh release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/docker-compose.yml release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/install.sh release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/smartdns-log-agent.service release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/config.env release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/README.md release-${{ matrix.suffix }}/README.md
           
-          # 创建 systemd 服务文件
-          cat > release-${{ matrix.suffix }}/smartdns-log-agent.service << 'EOF'
-          [Unit]
-          Description=SmartDNS Log Agent
-          After=network.target smartdns.service
-          Wants=network.target
+          # 如果没有 manage.sh 文件，创建一个简单的管理脚本
+          if [ ! -f "${{ env.AGENT_DIR }}/manage.sh" ]; then
+            cat > release-${{ matrix.suffix }}/manage.sh << 'EOF'
+          #!/bin/bash
           
-          [Service]
-          Type=simple
-          User=smartdns-log-agent
-          Group=smartdns-log-agent
-          ExecStart=/usr/local/bin/smartdns-log-agent
-          Restart=always
-          RestartSec=5
-          Environment=NODE_ID=1
-          Environment=LOG_FILE=/var/log/smartdns/smartdns.log
-          Environment=CLICKHOUSE_HOST=localhost
-          Environment=CLICKHOUSE_PORT=9000
-          Environment=CLICKHOUSE_DB=smartdns_logs
-          Environment=CLICKHOUSE_USER=default
-          EnvironmentFile=-/etc/smartdns-log-agent/config
-          StandardOutput=journal
-          StandardError=journal
-          SyslogIdentifier=smartdns-log-agent
+          SERVICE_NAME="smartdns-log-agent"
+          BINARY_NAME="smartdns-log-agent"
           
-          [Install]
-          WantedBy=multi-user.target
+          case "$1" in
+              start)
+                  echo "Starting $SERVICE_NAME..."
+                  sudo systemctl start $SERVICE_NAME
+                  ;;
+              stop)
+                  echo "Stopping $SERVICE_NAME..."
+                  sudo systemctl stop $SERVICE_NAME
+                  ;;
+              restart)
+                  echo "Restarting $SERVICE_NAME..."
+                  sudo systemctl restart $SERVICE_NAME
+                  ;;
+              status)
+                  sudo systemctl status $SERVICE_NAME
+                  ;;
+              logs)
+                  sudo journalctl -u $SERVICE_NAME -f
+                  ;;
+              install)
+                  echo "Installing $SERVICE_NAME..."
+                  sudo cp $BINARY_NAME /usr/local/bin/
+                  sudo chmod +x /usr/local/bin/$BINARY_NAME
+                  sudo cp $SERVICE_NAME.service /etc/systemd/system/
+                  sudo systemctl daemon-reload
+                  sudo systemctl enable $SERVICE_NAME
+                  echo "Installation completed. Use 'sudo ./manage.sh start' to start the service."
+                  ;;
+              uninstall)
+                  echo "Uninstalling $SERVICE_NAME..."
+                  sudo systemctl stop $SERVICE_NAME
+                  sudo systemctl disable $SERVICE_NAME
+                  sudo rm -f /etc/systemd/system/$SERVICE_NAME.service
+                  sudo rm -f /usr/local/bin/$BINARY_NAME
+                  sudo systemctl daemon-reload
+                  echo "Uninstallation completed."
+                  ;;
+              *)
+                  echo "Usage: $0 {start|stop|restart|status|logs|install|uninstall}"
+                  exit 1
+                  ;;
+          esac
           EOF
+            chmod +x release-${{ matrix.suffix }}/manage.sh
+          else
+            cp ${{ env.AGENT_DIR }}/manage.sh release-${{ matrix.suffix }}/
+            chmod +x release-${{ matrix.suffix }}/manage.sh
+          fi
           
-          # 创建配置文件模板
-          cat > release-${{ matrix.suffix }}/config.env << 'EOF'
-          # SmartDNS Log Agent 配置文件
-          # 复制到 /etc/smartdns-log-agent/config
+          # 创建详细的安装说明
+          cat > release-${{ matrix.suffix }}/INSTALL.md << 'EOF'
+          # SmartDNS Log Agent 安装指南
           
-          # 节点配置
-          NODE_ID=1
-          NODE_NAME=node-1
+          ## 快速安装（推荐）
           
-          # 日志文件路径
-          LOG_FILE=/var/log/smartdns/smartdns.log
+          ### 1. 使用管理脚本安装
+          ```bash
+          # 解压发布包
+          tar -xzf smartdns-log-agent-*.tar.gz
+          cd smartdns-log-agent-*/
           
-          # 批处理配置
-          BATCH_SIZE=1000
-          FLUSH_INTERVAL_SEC=2
+          # 安装服务
+          sudo ./manage.sh install
           
-          # ClickHouse 配置
-          CLICKHOUSE_HOST=localhost
-          CLICKHOUSE_PORT=9000
-          CLICKHOUSE_DB=smartdns_logs
-          CLICKHOUSE_USER=default
-          CLICKHOUSE_PASSWORD=
-          EOF
+          # 配置环境变量（可选）
+          sudo nano /etc/smartdns-log-agent/config
           
-          # 创建安装说明
-          cat > release-${{ matrix.suffix }}/README.md << 'EOF'
-          # SmartDNS Log Agent 安装说明
+          # 启动服务
+          sudo ./manage.sh start
+          
+          # 查看状态
+          sudo ./manage.sh status
+          
+          # 查看日志
+          sudo ./manage.sh logs
+          ```
+          
+          ### 2. 使用安装脚本
+          ```bash
+          # 如果存在 install.sh 脚本
+          sudo bash install.sh
+          ```
           
           ## Docker 部署
-          ```bash
-          # 配置环境变量
-          cp docker-compose.yml /opt/smartdns-log-agent/
-          cd /opt/smartdns-log-agent
           
-          # 编辑 .env 文件
+          ### 使用 docker-compose
+          ```bash
+          # 编辑环境变量
           cat > .env << 'EOL'
           NODE_ID=1
           NODE_NAME=node-1
+          LOG_FILE=/var/log/smartdns/smartdns.log
           CLICKHOUSE_HOST=your-clickhouse-host
+          CLICKHOUSE_PORT=9000
+          CLICKHOUSE_DB=smartdns_logs
+          CLICKHOUSE_USER=default
           CLICKHOUSE_PASSWORD=your-password
+          BATCH_SIZE=1000
+          FLUSH_INTERVAL_SEC=2
           EOL
           
           # 启动服务
           docker-compose up -d
+          
+          # 查看日志
+          docker-compose logs -f
           ```
           
-          ## systemd 部署
+          ### 直接使用 Docker
           ```bash
-          # 1. 安装二进制文件
+          docker run -d \
+            --name smartdns-log-agent \
+            -e NODE_ID=1 \
+            -e CLICKHOUSE_HOST=your-host \
+            -e CLICKHOUSE_PASSWORD=your-password \
+            -v /var/log/smartdns:/var/log/smartdns:ro \
+            ghcr.io/your-repo/smartdns-log-agent:latest
+          ```
+          
+          ## 手动安装
+          
+          ### 1. 安装二进制文件
+          ```bash
           sudo cp smartdns-log-agent-* /usr/local/bin/smartdns-log-agent
           sudo chmod +x /usr/local/bin/smartdns-log-agent
+          ```
           
-          # 2. 创建用户
+          ### 2. 创建系统用户
+          ```bash
           sudo useradd -r -s /bin/false smartdns-log-agent
+          ```
           
-          # 3. 创建配置目录
+          ### 3. 创建配置目录和文件
+          ```bash
           sudo mkdir -p /etc/smartdns-log-agent
           sudo cp config.env /etc/smartdns-log-agent/config
           sudo chown -R smartdns-log-agent:smartdns-log-agent /etc/smartdns-log-agent
+          ```
           
-          # 4. 安装服务
+          ### 4. 安装 systemd 服务
+          ```bash
           sudo cp smartdns-log-agent.service /etc/systemd/system/
           sudo systemctl daemon-reload
           sudo systemctl enable smartdns-log-agent
-          sudo systemctl start smartdns-log-agent
-          
-          # 5. 查看状态
-          sudo systemctl status smartdns-log-agent
-          sudo journalctl -u smartdns-log-agent -f
           ```
           
-          ## 手动运行
+          ### 5. 启动服务
           ```bash
-          # 设置环境变量
-          export NODE_ID=1
-          export CLICKHOUSE_HOST=your-host
-          export CLICKHOUSE_PASSWORD=your-password
+          sudo systemctl start smartdns-log-agent
+          sudo systemctl status smartdns-log-agent
+          ```
           
-          # 运行
-          ./smartdns-log-agent-*
+          ## 配置说明
+          
+          ### 环境变量
+          编辑 `/etc/smartdns-log-agent/config` 或设置环境变量：
+          
+          ```bash
+          # 节点配置
+          NODE_ID=1                           # 节点ID
+          NODE_NAME=node-1                    # 节点名称
+          
+          # 日志文件
+          LOG_FILE=/var/log/smartdns/smartdns.log  # SmartDNS 日志文件路径
+          
+          # ClickHouse 配置
+          CLICKHOUSE_HOST=localhost           # ClickHouse 主机
+          CLICKHOUSE_PORT=9000                # ClickHouse 端口
+          CLICKHOUSE_DB=smartdns_logs         # 数据库名
+          CLICKHOUSE_USER=default             # 用户名
+          CLICKHOUSE_PASSWORD=                # 密码
+          
+          # 批处理配置
+          BATCH_SIZE=1000                     # 批处理大小
+          FLUSH_INTERVAL_SEC=2                # 刷新间隔（秒）
+          ```
+          
+          ## 故障排除
+          
+          ### 查看日志
+          ```bash
+          # systemd 日志
+          sudo journalctl -u smartdns-log-agent -f
+          
+          # 或使用管理脚本
+          sudo ./manage.sh logs
+          ```
+          
+          ### 检查服务状态
+          ```bash
+          sudo systemctl status smartdns-log-agent
+          ```
+          
+          ### 测试连接
+          ```bash
+          # 测试 ClickHouse 连接
+          echo "SELECT 1" | clickhouse-client --host=your-host --port=9000
+          
+          # 检查 SmartDNS 日志文件
+          ls -la /var/log/smartdns/smartdns.log
+          ```
+          
+          ### 常见问题
+          
+          1. **权限问题**: 确保 smartdns-log-agent 用户有权限读取 SmartDNS 日志文件
+          2. **网络问题**: 确保能连接到 ClickHouse 服务器
+          3. **配置问题**: 检查环境变量配置是否正确
+          
+          ## 卸载
+          
+          ### 使用管理脚本
+          ```bash
+          sudo ./manage.sh uninstall
+          ```
+          
+          ### 手动卸载
+          ```bash
+          sudo systemctl stop smartdns-log-agent
+          sudo systemctl disable smartdns-log-agent
+          sudo rm -f /etc/systemd/system/smartdns-log-agent.service
+          sudo rm -f /usr/local/bin/smartdns-log-agent
+          sudo rm -rf /etc/smartdns-log-agent
+          sudo userdel smartdns-log-agent
+          sudo systemctl daemon-reload
           ```
           EOF
           
@@ -250,8 +382,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./agent
+          file: ./agent/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -294,39 +426,92 @@ jobs:
           cat > release-notes.md << 'EOF'
           ## SmartDNS Log Agent ${{ github.ref_name }}
           
-          ### 新特性
-          - 支持多平台二进制文件
-          - Docker 容器化部署
-          - systemd 服务支持
-          - 自动重连和错误恢复
+          高性能的 SmartDNS 日志收集和分析代理，支持实时日志收集、批量处理和 ClickHouse 存储。
           
-          ### 支持平台
-          - Linux (amd64, arm64, armv7)
-          - macOS (amd64, arm64)
-          - Windows (amd64)
+          ### ✨ 主要特性
           
-          ### 部署方式
-          1. **Docker**: 使用 `docker-compose.yml`
-          2. **systemd**: 使用 `smartdns-log-agent.service`
-          3. **手动**: 直接运行二进制文件
+          - 🚀 **高性能**: 异步日志处理，支持大量并发
+          - 📊 **实时监控**: 实时收集 SmartDNS 日志并存储到 ClickHouse
+          - 🐳 **容器化**: 支持 Docker 和 docker-compose 部署
+          - 🔧 **易于管理**: 提供 systemd 服务和管理脚本
+          - 🔄 **自动重连**: 网络中断自动重连，确保数据不丢失
+          - 📦 **批量处理**: 可配置批量大小和刷新间隔
           
-          ### 快速安装
+          ### 🏗️ 支持架构
+          
+          | 平台 | 架构 | 文件名 |
+          |------|------|--------|
+          | Linux | x86_64 | `smartdns-log-agent-linux-amd64.tar.gz` |
+          | Linux | ARM64 | `smartdns-log-agent-linux-arm64.tar.gz` |
+          | Linux | ARMv7 | `smartdns-log-agent-linux-armv7.tar.gz` |
+          | macOS | Intel | `smartdns-log-agent-darwin-amd64.tar.gz` |
+          | macOS | Apple Silicon | `smartdns-log-agent-darwin-arm64.tar.gz` |
+          | Windows | x86_64 | `smartdns-log-agent-windows-amd64.exe.tar.gz` |
+          
+          ### 🚀 快速开始
+          
+          #### 1. 下载并安装
           ```bash
-          # 下载并解压
+          # 下载对应平台的包
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/smartdns-log-agent-linux-amd64.tar.gz
+          
+          # 解压
+          tar -xzf smartdns-log-agent-linux-amd64.tar.gz
+          cd smartdns-log-agent-linux-amd64/
+          
+          # 快速安装
+          sudo ./manage.sh install
+          
+          # 配置（可选）
+          sudo nano /etc/smartdns-log-agent/config
+          
+          # 启动服务
+          sudo ./manage.sh start
+          ```
+          
+          #### 2. Docker 部署
+          ```bash
+          # 使用 Docker Compose
           wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/smartdns-log-agent-linux-amd64.tar.gz
           tar -xzf smartdns-log-agent-linux-amd64.tar.gz
+          cd smartdns-log-agent-linux-amd64/
           
-          # 使用安装脚本
-          sudo bash install.sh
+          # 编辑环境变量
+          nano .env
+          
+          # 启动
+          docker-compose up -d
           ```
           
-          ### Docker 镜像
+          #### 3. 直接运行 Docker 镜像
           ```bash
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          docker run -d \
+            --name smartdns-log-agent \
+            -e NODE_ID=1 \
+            -e CLICKHOUSE_HOST=your-clickhouse-host \
+            -e CLICKHOUSE_PASSWORD=your-password \
+            -v /var/log/smartdns:/var/log/smartdns:ro \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           ```
           
-          ### 配置说明
-          详见各平台包中的 `README.md` 文件。
+          ### 📖 文档
+          
+          每个发布包都包含详细的安装和配置说明：
+          - `README.md` - 基本说明
+          - `INSTALL.md` - 详细安装指南
+          - `config.env` - 配置文件模板
+          - `manage.sh` - 服务管理脚本
+          
+          ### 🐛 问题反馈
+          
+          如果遇到问题，请：
+          1. 查看日志：`sudo ./manage.sh logs`
+          2. 检查配置：确保 ClickHouse 连接正常
+          3. 提交 Issue：包含日志和配置信息
+          
+          ### 📝 更新日志
+          
+          详细的更新内容请查看下方的自动生成的更新日志。
           EOF
 
       - name: Create GitHub Release
