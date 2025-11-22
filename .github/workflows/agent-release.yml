@@ -1,4 +1,4 @@
-name: Create Release Packages
+name: Agent Release
 on:
   push:
     tags:
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 如果是 tag 推送，先等待 binaries 构建完成
+      # 如果是 tag 推送,先等待 binaries 构建完成
       - name: Wait for binaries (if tag push)
         if: github.event_name == 'push'
         run: |
@@ -39,7 +39,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id || github.run_id }}
         continue-on-error: true
 
-      # 如果上面失败，尝试从同一个 workflow run 下载
+      # 如果上面失败,尝试从同一个 workflow run 下载
       - name: Download binary artifact (fallback)
         if: failure()
         uses: actions/download-artifact@v4
@@ -47,14 +47,11 @@ jobs:
           name: binary-${{ matrix.suffix }}
         continue-on-error: true
 
-      # 如果还是失败，手动构建
+      # 如果还是失败,手动构建
       - name: Build binary (fallback)
         if: failure()
         env:
           CGO_ENABLED: 0
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          GOARM: ${{ matrix.goarm }}
         run: |
           cd ${{ env.AGENT_DIR }}
           
@@ -88,17 +85,17 @@ jobs:
           # 复制二进制文件
           cp ${{ env.BINARY_NAME }}-${{ matrix.suffix }} release-${{ matrix.suffix }}/
           
-          # 复制配置文件（使用 2>/dev/null || true 避免文件不存在的错误）
+          # 复制配置文件(使用 2>/dev/null || true 避免文件不存在的错误)
           cp ${{ env.AGENT_DIR }}/docker-compose.yml release-${{ matrix.suffix }}/ 2>/dev/null || echo "docker-compose.yml not found"
           cp ${{ env.AGENT_DIR }}/config.env release-${{ matrix.suffix }}/ 2>/dev/null || echo "config.env not found"
           cp ${{ env.AGENT_DIR }}/README.md release-${{ matrix.suffix }}/ 2>/dev/null || echo "README.md not found"
           
-          # 复制安装脚本（如果存在）
+          # 复制安装脚本(如果存在)
           if [ -f "${{ env.AGENT_DIR }}/install.sh" ]; then
             cp ${{ env.AGENT_DIR }}/install.sh release-${{ matrix.suffix }}/
           fi
           
-          # 复制服务文件（如果存在）
+          # 复制服务文件(如果存在)
           if [ -f "${{ env.AGENT_DIR }}/smartdns-log-agent.service" ]; then
             cp ${{ env.AGENT_DIR }}/smartdns-log-agent.service release-${{ matrix.suffix }}/
           fi
@@ -135,7 +132,7 @@ jobs:
                   ;;
               install)
                   echo "Installing $SERVICE_NAME..."
-                  # 查找二进制文件（支持不同的命名格式）
+                  # 查找二进制文件(支持不同的命名格式)
                   for binary in $BINARY_NAME-* $BINARY_NAME; do
                     if [ -f "$binary" ] && [ -x "$binary" ]; then
                       sudo cp "$binary" /usr/local/bin/$BINARY_NAME
@@ -215,7 +212,7 @@ jobs:
           
           ## 配置说明
           
-          编辑 `/etc/smartdns-log-agent/config` 文件或环境变量：
+          编辑 `/etc/smartdns-log-agent/config` 文件或环境变量:
           
           ```bash
           NODE_ID=1
@@ -255,3 +252,191 @@ jobs:
           name: package-${{ matrix.suffix }}
           path: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz
           retention-days: 30
+
+  create-release:
+    needs: create-packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: releases/
+          merge-multiple: true
+
+      - name: Prepare release files
+        run: |
+          # 统计结果
+          file_count=$(ls releases/*.tar.gz 2>/dev/null | wc -l)
+          echo "📊 Final release files count: $file_count"
+          
+          if [ $file_count -gt 0 ]; then
+            echo "📋 Release files:"
+            ls -la releases/
+          else
+            echo "⚠️  No release files found, adding placeholder"
+            mkdir -p releases
+            touch releases/README.txt
+            echo "Release packages are being built. Please check the Actions tab." > releases/README.txt
+          fi
+
+      - name: Generate dynamic release notes
+        run: |
+          file_count=$(ls releases/*.tar.gz 2>/dev/null | wc -l)
+
+          cat > release-notes.md << 'EOF'
+          ## SmartDNS Log Agent ${{ github.ref_name }}
+
+          高性能的 SmartDNS 日志收集和分析代理。
+
+          ### 🚀 快速安装
+
+          > **注意**: 需要 root 权限,请替换实际的节点ID、ClickHouse地址和密码
+
+          ```bash
+          # 一键安装(推荐方式)
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- -n [节点ID] -H [ClickHouse地址] -p "[密码]"
+
+          # 示例
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- -n 1 -H 192.168.1.100 -p "mypassword"
+          ```
+
+          ### 🐳 Docker 模式
+
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- -n 1 -H 192.168.1.100 -p "password" -m docker
+          ```
+
+          ### 🔧 完整参数安装
+
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+            -n 1 \
+            -N "my-node" \
+            -H 192.168.1.100 \
+            -P 9000 \
+            -d smartdns_logs \
+            -u default \
+            -p "your_password" \
+            -l /var/log/audit/audit.log \
+            -m systemd
+          ```
+
+          ### 📋 参数说明
+
+          | 参数 | 简写 | 说明 | 必需 | 默认值 |
+          |------|------|------|------|--------|
+          | `--node-id` | `-n` | 节点ID | ✅ | - |
+          | `--clickhouse-host` | `-H` | ClickHouse主机地址 | ✅ | - |
+          | `--node-name` | `-N` | 节点名称 | ❌ | node-ID |
+          | `--clickhouse-port` | `-P` | ClickHouse端口 | ❌ | 9000 |
+          | `--clickhouse-db` | `-d` | 数据库名 | ❌ | smartdns_logs |
+          | `--clickhouse-user` | `-u` | 用户名 | ❌ | default |
+          | `--clickhouse-password` | `-p` | 密码 | ❌ | - |
+          | `--log-file` | `-l` | 日志文件路径 | ❌ | /var/log/audit/audit.log |
+          | `--mode` | `-m` | 部署模式 (systemd/docker) | ❌ | systemd |
+          | `--uninstall` | - | 卸载服务 | - | - |
+          | `--help` | `-h` | 显示帮助 | - | - |
+
+          ### 🛠️ 管理命令
+
+          ```bash
+          # 查看帮助
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | bash -s -- --help
+
+          # systemd 模式管理
+          sudo systemctl status smartdns-log-agent      # 查看状态
+          sudo systemctl restart smartdns-log-agent     # 重启
+          sudo journalctl -u smartdns-log-agent -f      # 查看日志
+
+              # Docker 模式管理
+              cd /opt/smartdns-log-agent && docker-compose ps        # 查看状态
+              cd /opt/smartdns-log-agent && docker-compose restart   # 重启服务
+              cd /opt/smartdns-log-agent && docker-compose logs -f   # 查看日志
+
+              # 卸载
+              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- --uninstall
+              ```
+
+              ### 🎯 使用场景示例
+
+              ```bash
+              # 场景1: 本地测试
+              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+                -n 1 -H localhost -p "test123"
+
+              # 场景2: 生产环境
+              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+                -n 1 -N "prod-server-01" -H 192.168.1.100 -P 9000 -p "prod_password" -l /var/log/smartdns/query.log
+
+              # 场景3: 自定义配置
+              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+                -n 2 -N "backup-node" -H clickhouse.example.com -P 9001 -d custom_logs -u admin -p "secret123"
+              ```
+              EOF
+
+              # 添加包信息
+              if [ $file_count -gt 0 ]; then
+                cat >> release-notes.md << EOF
+
+              ### 📦 可用平台 ($file_count 个包)
+
+              - **Linux**: amd64, arm64, armv7
+              - **macOS**: amd64 (Intel), arm64 (Apple Silicon) 
+              - **Windows**: amd64
+
+              > 推荐使用上方的一键安装脚本,会自动检测系统架构并下载对应版本
+              EOF
+              else
+                cat >> release-notes.md << EOF
+
+              ### ⏳ 发布包构建中...
+
+              二进制文件和安装包正在后台构建,请:
+              1. 稍后刷新此页面查看完整包
+              2. 或从 [Actions](https://github.com/${{ github.repository }}/actions) 页面直接下载
+              3. 推荐直接使用上方的一键安装脚本
+
+              ### 📦 即将支持的平台
+
+              - **Linux**: amd64, arm64, armv7
+              - **macOS**: amd64 (Intel), arm64 (Apple Silicon)
+              - **Windows**: amd64
+              EOF
+              fi
+
+              # 添加构建时间和版本信息
+              echo "" >> release-notes.md
+              echo "---" >> release-notes.md
+              echo "*构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')*" >> release-notes.md
+              echo "*版本: ${{ github.ref_name }}*" >> release-notes.md
+
+          - name: Create GitHub Release
+            uses: softprops/action-gh-release@v2
+            with:
+              tag_name: ${{ github.ref_name }}
+              name: SmartDNS Log Agent ${{ github.ref_name }}
+              body_path: release-notes.md
+              files: releases/*
+              draft: false
+              prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+              generate_release_notes: true
+              make_latest: true
+            env:
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          - name: Cleanup old artifacts
+            if: success()
+            run: |
+              echo "🧹 Cleaning up intermediate artifacts..."
+
+              # 可以在这里添加清理逻辑，比如删除临时文件等
+              # 但package artifacts会自动过期，所以通常不需要手动清理
+
+              echo "✅ Release creation completed successfully!"
