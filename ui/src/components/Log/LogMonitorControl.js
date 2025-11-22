@@ -1,11 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Switch, Button, Space, Statistic, Row, Col, message, Spin, Badge } from 'antd';
-import { PlayCircleOutlined, PauseCircleOutlined, SyncOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  Switch,
+  Button,
+  Space,
+  Statistic,
+  Row,
+  Divider,
+  message,
+  Spin,
+  Badge,
+} from "antd";
+import {
+  PlayCircleOutlined,
+  PauseCircleOutlined,
+  SyncOutlined,
+} from "@ant-design/icons";
 import {
   startNodeLogMonitor,
   stopNodeLogMonitor,
   getNodeLogMonitorStatus,
-} from '../../api';
+} from "../../api";
+import LogStats from "./LogStats";
+import AgentStatus from "../Agent/AgentStatus";
 
 const LogMonitorControl = ({ nodeId, nodeName }) => {
   const [monitoring, setMonitoring] = useState(false);
@@ -22,7 +39,7 @@ const LogMonitorControl = ({ nodeId, nodeName }) => {
       const response = await getNodeLogMonitorStatus(nodeId);
       setMonitoring(response.data.is_running);
     } catch (error) {
-      console.error('获取监控状态失败:', error);
+      console.error("获取监控状态失败:", error);
     } finally {
       setChecking(false);
     }
@@ -41,7 +58,7 @@ const LogMonitorControl = ({ nodeId, nodeName }) => {
         setMonitoring(false);
       }
     } catch (error) {
-      message.error(checked ? '启动监控失败' : '停止监控失败');
+      message.error(checked ? "启动监控失败" : "停止监控失败");
       console.error(error);
     } finally {
       setLoading(false);
@@ -57,47 +74,74 @@ const LogMonitorControl = ({ nodeId, nodeName }) => {
   }
 
   return (
-    <Card 
-      size="small"
-      title={
-        <Space>
-          <span>日志监控控制</span>
-          <Badge 
-            status={monitoring ? "processing" : "default"} 
-            text={monitoring ? "运行中" : "已停止"} 
-          />
+    <>
+      <Card
+        size="small"
+        title={
+          <Space>
+            <span>日志监控控制</span>
+            <Badge
+              status={monitoring ? "processing" : "default"}
+              text={monitoring ? "运行中" : "已停止"}
+            />
+          </Space>
+        }
+        extra={
+          <Button
+            type="link"
+            size="small"
+            icon={<SyncOutlined />}
+            onClick={checkMonitorStatus}
+            loading={checking}
+          >
+            刷新状态
+          </Button>
+        }
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>监控状态：</span>
+            <Switch
+              checked={monitoring}
+              onChange={handleToggleMonitor}
+              loading={loading}
+              checkedChildren={<PlayCircleOutlined />}
+              unCheckedChildren={<PauseCircleOutlined />}
+            />
+          </div>
+          <div style={{ fontSize: "12px", color: "#666" }}>
+            {monitoring
+              ? `正在实时监控节点 ${nodeName} 的 DNS 查询日志`
+              : "启用后将实时采集 DNS 查询日志"}
+          </div>
         </Space>
-      }
-      extra={
-        <Button
-          type="link"
-          size="small"
-          icon={<SyncOutlined />}
-          onClick={checkMonitorStatus}
-          loading={checking}
+
+        <Divider style={{ margin: "0 0 24px 0" }}>Agent 状态</Divider>
+
+        {/* Agent 状态区域 */}
+        <div
+          style={{
+            background: "#fafafa",
+            borderRadius: "8px",
+            padding: "16px",
+          }}
         >
-          刷新状态
-        </Button>
-      }
-    >
-      <Space direction="vertical" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>监控状态：</span>
-          <Switch
-            checked={monitoring}
-            onChange={handleToggleMonitor}
-            loading={loading}
-            checkedChildren={<PlayCircleOutlined />}
-            unCheckedChildren={<PauseCircleOutlined />}
+          <AgentStatus
+            node={{
+              id: nodeId,
+              name: nodeName,
+            }}
+            compact={true} // 传递 compact 属性给 AgentStatus
           />
         </div>
-        <div style={{ fontSize: '12px', color: '#666' }}>
-          {monitoring 
-            ? `正在实时监控节点 ${nodeName} 的 DNS 查询日志` 
-            : '启用后将实时采集 DNS 查询日志'}
-        </div>
-      </Space>
-    </Card>
+      </Card>
+    </>
   );
 };
 

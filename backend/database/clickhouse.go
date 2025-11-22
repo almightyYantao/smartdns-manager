@@ -46,7 +46,7 @@ func InitClickHouse() {
 		log.Fatal("❌ Ping ClickHouse 失败:", err)
 	}
 
-	log.Println("✅ ClickHouse 连接成功")
+	log.Println(" ClickHouse 连接成功")
 
 	// 关闭初始连接
 	conn.Close()
@@ -75,7 +75,7 @@ func InitClickHouse() {
 		log.Fatal("❌ 创建表失败:", err)
 	}
 
-	log.Printf("✅ ClickHouse 初始化完成 - 数据库: %s", cfg.Database)
+	log.Printf(" ClickHouse 初始化完成 - 数据库: %s", cfg.Database)
 }
 
 // createTablesIfNotExists 创建表结构
@@ -92,7 +92,7 @@ func createTablesIfNotExists(ctx context.Context, conn driver.Conn) error {
 		log.Printf("⚠️ 创建物化视图失败（可忽略）: %v", err)
 	}
 
-	log.Println("✅ 表结构创建完成")
+	log.Println(" 表结构创建完成")
 	return nil
 }
 
@@ -125,7 +125,7 @@ func createMainTable(ctx context.Context, conn driver.Conn) error {
 		return fmt.Errorf("创建主表失败: %w", err)
 	}
 
-	log.Println("✅ dns_query_log 表创建成功")
+	log.Println(" dns_query_log 表创建成功")
 	return nil
 }
 
@@ -155,7 +155,7 @@ func createMaterializedViews(ctx context.Context, conn driver.Conn) error {
 	if err := conn.Exec(ctx, hourlyStatsSQL); err != nil {
 		log.Printf("⚠️ 创建 dns_stats_hourly 视图失败: %v", err)
 	} else {
-		log.Println("✅ dns_stats_hourly 视图创建成功")
+		log.Println(" dns_stats_hourly 视图创建成功")
 	}
 
 	// 2. 热门域名统计的物化视图
@@ -176,7 +176,7 @@ func createMaterializedViews(ctx context.Context, conn driver.Conn) error {
 	if err := conn.Exec(ctx, topDomainsSQL); err != nil {
 		log.Printf("⚠️ 创建 dns_top_domains 视图失败: %v", err)
 	} else {
-		log.Println("✅ dns_top_domains 视图创建成功")
+		log.Println(" dns_top_domains 视图创建成功")
 	}
 
 	// 3. 客户端统计的物化视图
@@ -198,7 +198,7 @@ func createMaterializedViews(ctx context.Context, conn driver.Conn) error {
 	if err := conn.Exec(ctx, clientStatsSQL); err != nil {
 		log.Printf("⚠️ 创建 dns_client_stats 视图失败: %v", err)
 	} else {
-		log.Println("✅ dns_client_stats 视图创建成功")
+		log.Println(" dns_client_stats 视图创建成功")
 	}
 
 	return nil
@@ -208,7 +208,7 @@ func createMaterializedViews(ctx context.Context, conn driver.Conn) error {
 func CloseClickHouse() {
 	if CHConn != nil {
 		CHConn.Close()
-		log.Println("✅ ClickHouse 连接已关闭")
+		log.Println(" ClickHouse 连接已关闭")
 	}
 }
 

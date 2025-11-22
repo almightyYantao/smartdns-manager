@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	_ "io/ioutil"
 	"time"
@@ -166,4 +167,38 @@ func (c *SSHClient) ListBackups(configPath string) ([]string, error) {
 		}
 	}
 	return backups, nil
+}
+
+func (client *SSHClient) ExecuteCommandWithTimeout(command string, timeout time.Duration) (string, error) {
+	session, err := client.client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	// 创建超时上下文
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// 创建结果通道
+	type result struct {
+		output string
+		err    error
+	}
+	resultChan := make(chan result, 1)
+
+	// 在 goroutine 中执行命令
+	go func() {
+		output, err := session.CombinedOutput(command)
+		resultChan <- result{string(output), err}
+	}()
+
+	// 等待结果或超时
+	select {
+	case res := <-resultChan:
+		return res.output, res.err
+	case <-ctx.Done():
+		session.Signal(ssh.SIGTERM)
+		return "", fmt.Errorf("命令执行超时")
+	}
 }

@@ -1,0 +1,25 @@
+[Unit]
+Description=SmartDNS Log Agent
+After=network.target auditd.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/smartdns-log-agent
+Restart=always
+RestartSec=5
+Environment=NODE_ID=1
+Environment=LOG_FILE=/var/log/audit/audit.log
+Environment=CLICKHOUSE_HOST=localhost
+Environment=CLICKHOUSE_PORT=9000
+Environment=CLICKHOUSE_DB=smartdns_logs
+Environment=CLICKHOUSE_USER=default
+EnvironmentFile=-/etc/smartdns-log-agent/config
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smartdns-log-agent
+
+[Install]
+WantedBy=multi-user.target

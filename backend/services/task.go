@@ -301,7 +301,7 @@ func (checker *NodeHealthChecker) sendRecoveryNotification(node *models.Node, ol
 		"error":   "状态异常",
 	}
 
-	message := fmt.Sprintf("节点：%s\n状态：已恢复正常 ✅\n时间：%s\n之前状态：%s",
+	message := fmt.Sprintf("节点：%s\n状态：已恢复正常 \n时间：%s\n之前状态：%s",
 		node.Name,
 		time.Now().Format("2006-01-02 15:04:05"),
 		statusText[oldStatus])
@@ -310,7 +310,7 @@ func (checker *NodeHealthChecker) sendRecoveryNotification(node *models.Node, ol
 	go checker.notificationService.SendNotification(
 		node.ID,
 		"node_health_check",
-		"✅ 节点已恢复",
+		" 节点已恢复",
 		message,
 	)
 

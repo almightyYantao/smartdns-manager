@@ -31,6 +31,12 @@ type Node struct {
 	CreatedAt            time.Time             `json:"created_at"`
 	UpdatedAt            time.Time             `json:"updated_at"`
 	DeletedAt            gorm.DeletedAt        `json:"-" gorm:"index"`
+	AgentAPIPort         int                   `json:"agent_api_port" gorm:"default:8888"`
+
+	AgentInstalled bool   `json:"agent_installed" gorm:"default:false"`
+	AgentVersion   string `json:"agent_version"`
+	DeployMode     string `json:"deploy_mode"`
+	AgentConfig    string `json:"agent_config" gorm:"type:text"`
 }
 
 // InitLog 初始化日志

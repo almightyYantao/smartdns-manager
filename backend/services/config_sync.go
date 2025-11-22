@@ -152,10 +152,10 @@ func (s *ConfigSyncService) syncAddressToNode(address *models.AddressMap, node *
 	syncLog.Status = "success"
 	database.DB.Save(syncLog)
 
-	s.notificationService.SendNotification(node.ID, "sync_success", "✅ 配置同步成功",
+	s.notificationService.SendNotification(node.ID, "sync_success", " 配置同步成功",
 		fmt.Sprintf("%s 已成功同步到节点", displayText))
 
-	log.Printf("✅ 成功同步到节点: %s", node.Name)
+	log.Printf(" 成功同步到节点: %s", node.Name)
 	return nil
 }
 
@@ -264,7 +264,7 @@ func (s *ConfigSyncService) syncServerToNode(server *models.DNSServer, node *mod
 	syncLog.Status = "success"
 	database.DB.Save(syncLog)
 
-	log.Printf("✅ 成功同步DNS服务器到节点: %s", node.Name)
+	log.Printf(" 成功同步DNS服务器到节点: %s", node.Name)
 	return nil
 }
 
@@ -374,7 +374,7 @@ func (s *ConfigSyncService) FullSyncToNode(nodeID uint) error {
 		return err
 	}
 
-	log.Printf("✅ 完整同步成功: %s", node.Name)
+	log.Printf(" 完整同步成功: %s", node.Name)
 	return nil
 }
 

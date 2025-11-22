@@ -1,30 +1,25 @@
 package services
 
 import (
+	"smartdns-manager/database"
 	"smartdns-manager/models"
 	"time"
 )
 
-// LogMonitorServiceInterface 日志监控服务接口
-type LogMonitorServiceInterface interface {
-	// 启动节点监控
-	StartNodeMonitor(nodeID uint) error
-
-	// 停止节点监控
-	StopNodeMonitor(nodeID uint) error
-
-	// 获取节点监控状态
-	GetNodeMonitorStatus(nodeID uint) (bool, error)
-
-	// 查询日志列表
+// LogMonitorInterface 日志监控服务接口
+type LogMonitorInterface interface {
 	GetLogs(page, pageSize int, filters map[string]interface{}) ([]models.DNSLog, int64, error)
+	GetStats(nodeID uint, startTime, endTime time.Time) (*models.DNSLogStats, error)
+	SearchDomains(keyword string, limit int) ([]string, error)
+	CleanOldLogs(nodeID uint, days int) error
+	CheckHealth() error
+	GetStorageType() string
+	GetStorageInfo() map[string]interface{}
+	EnsureTables() error
+	GetTableStats() (map[string]interface{}, error)
+}
 
-	// 获取节点统计信息
-	GetNodeStats(nodeID uint, startTime, endTime time.Time) (*models.DNSLogStats, error)
-
-	// 清理节点旧日志
-	CleanNodeLogs(nodeID uint, days int) error
-
-	// 停止所有监控
-	StopAll()
+// NewLogMonitorService 创建日志监控服务工厂函数
+func NewLogMonitorService() LogMonitorInterface {
+	return NewLogMonitorServiceCH(database.CHConn)
 }

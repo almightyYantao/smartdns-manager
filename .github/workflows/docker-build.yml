@@ -1,4 +1,5 @@
-name: Build and Push Docker Image
+name: Build and Release
+
 on:
   push:
     branches:
@@ -6,13 +7,215 @@ on:
       - master
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  BINARY_NAME: smartdns-log-agent
 
 jobs:
-  build-and-push:
+  build-binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: linux
+            goarch: arm
+            goarm: 7
+            suffix: linux-armv7
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          # 构建二进制文件
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" -o ${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
+          else
+            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" -o ${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
+          fi
+          
+          # 验证二进制文件
+          if [ "${{ matrix.goos }}" != "windows" ]; then
+            file ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+          fi
+      
+      - name: Create release package
+        run: |
+          # 创建发布包目录
+          mkdir -p release-${{ matrix.suffix }}
+          
+          # 复制二进制文件
+          cp ${{ env.BINARY_NAME }}-${{ matrix.suffix }} release-${{ matrix.suffix }}/
+          
+          # 复制配置文件和脚本
+          cp docker-compose.yml release-${{ matrix.suffix }}/
+          cp install.sh release-${{ matrix.suffix }}/
+          cp manage.sh release-${{ matrix.suffix }}/
+          
+          # 创建 systemd 服务文件
+          cat > release-${{ matrix.suffix }}/smartdns-log-agent.service << 'EOF'
+          [Unit]
+          Description=SmartDNS Log Agent
+          After=network.target smartdns.service
+          Wants=network.target
+          
+          [Service]
+          Type=simple
+          User=smartdns-log-agent
+          Group=smartdns-log-agent
+          ExecStart=/usr/local/bin/smartdns-log-agent
+          Restart=always
+          RestartSec=5
+          Environment=NODE_ID=1
+          Environment=LOG_FILE=/var/log/smartdns/smartdns.log
+          Environment=CLICKHOUSE_HOST=localhost
+          Environment=CLICKHOUSE_PORT=9000
+          Environment=CLICKHOUSE_DB=smartdns_logs
+          Environment=CLICKHOUSE_USER=default
+          EnvironmentFile=-/etc/smartdns-log-agent/config
+          StandardOutput=journal
+          StandardError=journal
+          SyslogIdentifier=smartdns-log-agent
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          # 创建配置文件模板
+          cat > release-${{ matrix.suffix }}/config.env << 'EOF'
+          # SmartDNS Log Agent 配置文件
+          # 复制到 /etc/smartdns-log-agent/config
+          
+          # 节点配置
+          NODE_ID=1
+          NODE_NAME=node-1
+          
+          # 日志文件路径
+          LOG_FILE=/var/log/smartdns/smartdns.log
+          
+          # 批处理配置
+          BATCH_SIZE=1000
+          FLUSH_INTERVAL_SEC=2
+          
+          # ClickHouse 配置
+          CLICKHOUSE_HOST=localhost
+          CLICKHOUSE_PORT=9000
+          CLICKHOUSE_DB=smartdns_logs
+          CLICKHOUSE_USER=default
+          CLICKHOUSE_PASSWORD=
+          EOF
+          
+          # 创建安装说明
+          cat > release-${{ matrix.suffix }}/README.md << 'EOF'
+          # SmartDNS Log Agent 安装说明
+          
+          ## Docker 部署
+          ```bash
+          # 配置环境变量
+          cp docker-compose.yml /opt/smartdns-log-agent/
+          cd /opt/smartdns-log-agent
+          
+          # 编辑 .env 文件
+          cat > .env << 'EOL'
+          NODE_ID=1
+          NODE_NAME=node-1
+          CLICKHOUSE_HOST=your-clickhouse-host
+          CLICKHOUSE_PASSWORD=your-password
+          EOL
+          
+          # 启动服务
+          docker-compose up -d
+          ```
+          
+          ## systemd 部署
+          ```bash
+          # 1. 安装二进制文件
+          sudo cp smartdns-log-agent-* /usr/local/bin/smartdns-log-agent
+          sudo chmod +x /usr/local/bin/smartdns-log-agent
+          
+          # 2. 创建用户
+          sudo useradd -r -s /bin/false smartdns-log-agent
+          
+          # 3. 创建配置目录
+          sudo mkdir -p /etc/smartdns-log-agent
+          sudo cp config.env /etc/smartdns-log-agent/config
+          sudo chown -R smartdns-log-agent:smartdns-log-agent /etc/smartdns-log-agent
+          
+          # 4. 安装服务
+          sudo cp smartdns-log-agent.service /etc/systemd/system/
+          sudo systemctl daemon-reload
+          sudo systemctl enable smartdns-log-agent
+          sudo systemctl start smartdns-log-agent
+          
+          # 5. 查看状态
+          sudo systemctl status smartdns-log-agent
+          sudo journalctl -u smartdns-log-agent -f
+          ```
+          
+          ## 手动运行
+          ```bash
+          # 设置环境变量
+          export NODE_ID=1
+          export CLICKHOUSE_HOST=your-host
+          export CLICKHOUSE_PASSWORD=your-password
+          
+          # 运行
+          ./smartdns-log-agent-*
+          ```
+          EOF
+          
+          # 打包
+          tar -czf ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz -C release-${{ matrix.suffix }} .
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+          path: |
+            ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz
+            ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
+
+  build-docker:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,3 +259,62 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ github.ref_name || github.sha }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-binaries, build-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+      
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## SmartDNS Log Agent ${{ github.ref_name }}
+          
+          ### 新特性
+          - 支持多平台二进制文件
+          - Docker 容器化部署
+          - systemd 服务支持
+          - 自动重连和错误恢复
+          
+          ### 支持平台
+          - Linux (amd64, arm64, armv7)
+          - macOS (amd64, arm64)
+          - Windows (amd64)
+          
+          ### 部署方式
+          1. **Docker**: 使用 `docker-compose.yml`
+          2. **systemd**: 使用 `smartdns-log-agent.service`
+          3. **手动**: 直接运行二进制文件
+          
+          ### 快速安装
+          ```bash
+          # 下载并解压
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/smartdns-log-agent-linux-amd64.tar.gz
+          tar -xzf smartdns-log-agent-linux-amd64.tar.gz
+          
+          # 使用安装脚本
+          sudo bash install.sh
+          ```
+          
+          ### 配置说明
+          详见各平台包中的 `README.md` 文件。
+          EOF
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: |
+            */smartdns-log-agent-*.tar.gz

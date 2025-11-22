@@ -65,3 +65,17 @@ type HourlyStat struct {
 	Hour  int   `json:"hour"`
 	Count int64 `json:"count"`
 }
+
+// DeployAgentRequest 部署请求结构
+type DeployAgentRequest struct {
+	NodeID             uint   `json:"node_id" binding:"required"`
+	DeployMode         string `json:"deploy_mode" binding:"required"` // systemd 或 docker
+	ClickHouseHost     string `json:"clickhouse_host" binding:"required"`
+	ClickHousePort     int    `json:"clickhouse_port"`
+	ClickHouseDB       string `json:"clickhouse_db"`
+	ClickHouseUser     string `json:"clickhouse_user"`
+	ClickHousePassword string `json:"clickhouse_password"`
+	LogFilePath        string `json:"log_file_path"`
+	BatchSize          int    `json:"batch_size"`
+	FlushInterval      int    `json:"flush_interval"`
+}

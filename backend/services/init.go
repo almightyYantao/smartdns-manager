@@ -87,7 +87,7 @@ func (s *InitService) InitNode(nodeID uint) error {
 	// 步骤2: 检查 SmartDNS 是否已安装
 	installed, version := s.checkSmartDNSInstalled(&node)
 	if installed {
-		log.Printf("✅ SmartDNS 已安装，版本: %s", version)
+		log.Printf(" SmartDNS 已安装，版本: %s", version)
 		node.InitStatus = "installed"
 		node.SmartDNSVersion = version
 		database.DB.Save(&node)
@@ -95,7 +95,7 @@ func (s *InitService) InitNode(nodeID uint) error {
 		s.notificationService.SendNotification(
 			node.ID,
 			"node_init_success",
-			"✅ 节点已安装 SmartDNS",
+			" 节点已安装 SmartDNS",
 			fmt.Sprintf("节点 `%s` 已安装 SmartDNS %s", node.Name, version),
 		)
 		return nil
@@ -126,13 +126,13 @@ func (s *InitService) InitNode(nodeID uint) error {
 	node.Status = "online"
 	database.DB.Save(&node)
 
-	log.Printf("✅ 节点初始化完成: %s", node.Name)
+	log.Printf(" 节点初始化完成: %s", node.Name)
 
 	// 发送成功通知
 	s.notificationService.SendNotification(
 		node.ID,
 		"node_init_success",
-		"✅ 节点初始化成功",
+		" 节点初始化成功",
 		fmt.Sprintf("节点 `%s` SmartDNS 安装完成\n版本: %s", node.Name, node.SmartDNSVersion),
 	)
 
@@ -203,7 +203,7 @@ func (s *InitService) detectSystem(node *models.Node) error {
 	detail := fmt.Sprintf("OS: %s %s\nArchitecture: %s", node.OSType, node.OSVersion, node.Architecture)
 	s.updateInitLog(initLog, "success", detail, "")
 
-	log.Printf("✅ 系统检测完成: %s %s (%s)", node.OSType, node.OSVersion, node.Architecture)
+	log.Printf(" 系统检测完成: %s %s (%s)", node.OSType, node.OSVersion, node.Architecture)
 	return nil
 }
 
@@ -318,7 +318,7 @@ func (s *InitService) downloadSmartDNS(node *models.Node) error {
 
 	s.updateInitLog(initLog, "success", fmt.Sprintf("版本: %s", release.Version), "")
 
-	log.Printf("✅ SmartDNS 下载完成: %s", release.Version)
+	log.Printf(" SmartDNS 下载完成: %s", release.Version)
 	return nil
 }
 
@@ -348,7 +348,7 @@ func (s *InitService) installSmartDNS(node *models.Node) error {
 
 	s.updateInitLog(initLog, "success", output, "")
 
-	log.Printf("✅ SmartDNS 安装完成")
+	log.Printf(" SmartDNS 安装完成")
 	return nil
 }
 
@@ -423,7 +423,7 @@ server 114.114.114.114
 
 	s.updateInitLog(initLog, "success", "配置文件: "+configPath, "")
 
-	log.Printf("✅ 配置初始化完成")
+	log.Printf(" 配置初始化完成")
 	return nil
 }
 
@@ -466,7 +466,7 @@ func (s *InitService) startService(node *models.Node) error {
 
 	s.updateInitLog(initLog, "success", "SmartDNS 服务已启动", "")
 
-	log.Printf("✅ SmartDNS 服务启动成功")
+	log.Printf(" SmartDNS 服务启动成功")
 	return nil
 }
 
@@ -531,7 +531,7 @@ func (s *InitService) UninstallSmartDNS(nodeID uint) error {
 	node.SmartDNSVersion = ""
 	database.DB.Save(&node)
 
-	log.Printf("✅ SmartDNS 卸载完成")
+	log.Printf(" SmartDNS 卸载完成")
 
 	// 发送通知
 	s.notificationService.SendNotification(

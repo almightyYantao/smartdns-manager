@@ -33,6 +33,7 @@ import NodeForm from "./NodeForm";
 import NodeStatus from "./NodeStatus";
 import SyncStatus from "../Config/SyncStatus";
 import NodeInitializer from "./NodeInitializer";
+import AgentStatus from '../Agent/AgentStatus';
 import { useNavigate } from "react-router-dom";
 
 const NodeList = () => {
@@ -268,7 +269,6 @@ const NodeList = () => {
       render: (time) =>
         time ? moment(time).format("YYYY-MM-DD HH:mm:ss") : "-",
     },
-
     {
       title: "操作",
       key: "action",
