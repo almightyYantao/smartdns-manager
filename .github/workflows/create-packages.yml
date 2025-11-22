@@ -1,0 +1,192 @@
+name: Create Release Packages
+on:
+  workflow_run:
+    workflows: ["Build Binaries"]
+    types:
+      - completed
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+
+env:
+  BINARY_NAME: smartdns-log-agent
+  AGENT_DIR: agent
+
+jobs:
+  create-packages:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      matrix:
+        suffix: [linux-amd64, linux-arm64, linux-armv7, darwin-amd64, darwin-arm64, windows-amd64.exe]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.suffix }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Create release package
+        run: |
+          mkdir -p release-${{ matrix.suffix }}
+          
+          # 复制二进制文件
+          cp ${{ env.BINARY_NAME }}-${{ matrix.suffix }} release-${{ matrix.suffix }}/
+          
+          # 复制配置文件
+          cp ${{ env.AGENT_DIR }}/docker-compose.yml release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/config.env release-${{ matrix.suffix }}/
+          cp ${{ env.AGENT_DIR }}/README.md release-${{ matrix.suffix }}/
+          
+          # 复制安装脚本（如果存在）
+          if [ -f "${{ env.AGENT_DIR }}/install.sh" ]; then
+            cp ${{ env.AGENT_DIR }}/install.sh release-${{ matrix.suffix }}/
+          fi
+          
+          # 复制服务文件（如果存在）
+          if [ -f "${{ env.AGENT_DIR }}/smartdns-log-agent.service" ]; then
+            cp ${{ env.AGENT_DIR }}/smartdns-log-agent.service release-${{ matrix.suffix }}/
+          fi
+
+      - name: Generate management script
+        run: |
+          cat > release-${{ matrix.suffix }}/manage.sh << 'EOF'
+          #!/bin/bash
+          
+          SERVICE_NAME="smartdns-log-agent"
+          BINARY_NAME="smartdns-log-agent"
+          
+          case "$1" in
+              start)
+                  echo "Starting $SERVICE_NAME..."
+                  sudo systemctl start $SERVICE_NAME
+                  ;;
+              stop)
+                  echo "Stopping $SERVICE_NAME..."
+                  sudo systemctl stop $SERVICE_NAME
+                  ;;
+              restart)
+                  echo "Restarting $SERVICE_NAME..."
+                  sudo systemctl restart $SERVICE_NAME
+                  ;;
+              status)
+                  sudo systemctl status $SERVICE_NAME
+                  ;;
+              logs)
+                  sudo journalctl -u $SERVICE_NAME -f
+                  ;;
+              install)
+                  echo "Installing $SERVICE_NAME..."
+                  sudo cp $BINARY_NAME-* /usr/local/bin/$BINARY_NAME
+                  sudo chmod +x /usr/local/bin/$BINARY_NAME
+          
+                  # 创建用户
+                  if ! id "$SERVICE_NAME" &>/dev/null; then
+                      sudo useradd -r -s /bin/false $SERVICE_NAME
+                  fi
+          
+                  # 创建配置目录
+                  sudo mkdir -p /etc/$SERVICE_NAME
+                  if [ -f "config.env" ]; then
+                      sudo cp config.env /etc/$SERVICE_NAME/config
+                  fi
+                  sudo chown -R $SERVICE_NAME:$SERVICE_NAME /etc/$SERVICE_NAME
+          
+                  # 安装服务文件
+                  if [ -f "$SERVICE_NAME.service" ]; then
+                      sudo cp $SERVICE_NAME.service /etc/systemd/system/
+                      sudo systemctl daemon-reload
+                      sudo systemctl enable $SERVICE_NAME
+                  fi
+          
+                  echo "Installation completed. Use 'sudo ./manage.sh start' to start the service."
+                  ;;
+              uninstall)
+                  echo "Uninstalling $SERVICE_NAME..."
+                  sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
+                  sudo systemctl disable $SERVICE_NAME 2>/dev/null || true
+                  sudo rm -f /etc/systemd/system/$SERVICE_NAME.service
+                  sudo rm -f /usr/local/bin/$BINARY_NAME
+                  sudo rm -rf /etc/$SERVICE_NAME
+                  sudo systemctl daemon-reload
+                  echo "Uninstallation completed."
+                  ;;
+              *)
+                  echo "Usage: $0 {start|stop|restart|status|logs|install|uninstall}"
+                  exit 1
+                  ;;
+          esac
+          EOF
+          
+          chmod +x release-${{ matrix.suffix }}/manage.sh
+
+      - name: Generate install guide
+        run: |
+          cat > release-${{ matrix.suffix }}/INSTALL.md << 'EOF'
+          # SmartDNS Log Agent 安装指南
+          
+          ## 快速安装
+          
+          ```bash
+          # 使用管理脚本安装
+          sudo ./manage.sh install
+          
+          # 启动服务
+          sudo ./manage.sh start
+          
+          # 查看状态
+          sudo ./manage.sh status
+          ```
+          
+          ## Docker 部署
+          
+          ```bash
+          # 编辑环境变量
+          cp config.env .env
+          nano .env
+          
+          # 启动服务
+          docker-compose up -d
+          ```
+          
+          ## 配置说明
+          
+          编辑 `/etc/smartdns-log-agent/config` 文件：
+          
+          ```bash
+          NODE_ID=1
+          CLICKHOUSE_HOST=localhost
+          CLICKHOUSE_PASSWORD=your-password
+          LOG_FILE=/var/log/smartdns/smartdns.log
+          ```
+          
+          ## 管理命令
+          
+          ```bash
+          sudo ./manage.sh start     # 启动服务
+          sudo ./manage.sh stop      # 停止服务
+          sudo ./manage.sh restart   # 重启服务
+          sudo ./manage.sh status    # 查看状态
+          sudo ./manage.sh logs      # 查看日志
+          sudo ./manage.sh install   # 安装服务
+          sudo ./manage.sh uninstall # 卸载服务
+          ```
+          EOF
+
+      - name: Create package
+        run: |
+          tar -czf ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz -C release-${{ matrix.suffix }} .
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.suffix }}
+          path: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz
+          retention-days: 30

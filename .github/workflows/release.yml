@@ -1,0 +1,96 @@
+name: Create Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  BINARY_NAME: smartdns-log-agent
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 等待构建完成
+      - name: Wait for builds to complete
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'build-binaries'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Wait for packages to complete
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'create-packages'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: false
+
+      - name: Prepare release files
+        run: |
+          mkdir -p releases
+          find . -name "*.tar.gz" -exec mv {} releases/ \;
+          ls -la releases/
+
+      - name: Generate release notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## SmartDNS Log Agent ${{ github.ref_name }}
+          
+          高性能的 SmartDNS 日志收集和分析代理。
+          
+          ### 🚀 快速开始
+          
+          ```bash
+          # 下载对应平台的包
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/smartdns-log-agent-linux-amd64.tar.gz
+          tar -xzf smartdns-log-agent-linux-amd64.tar.gz
+          cd smartdns-log-agent-linux-amd64/
+          
+          # 安装
+          sudo ./manage.sh install
+          sudo ./manage.sh start
+          ```
+          
+          ### 🐳 Docker
+          
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          ```
+          
+          ### 📦 支持平台
+          
+          - Linux (amd64, arm64, armv7)
+          - macOS (amd64, arm64) 
+          - Windows (amd64)
+          
+          每个包都包含完整的安装脚本和配置文件。
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SmartDNS Log Agent ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: releases/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          make_latest: true
