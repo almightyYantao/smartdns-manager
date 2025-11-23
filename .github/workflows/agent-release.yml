@@ -1,82 +1,76 @@
-name: Agent Release
+name: Build and Release Agent
 on:
   push:
     tags:
       - 'agent-v*'
-  workflow_run:
-    workflows: ["Build Binaries"]
-    types:
-      - completed
 
 env:
   BINARY_NAME: smartdns-log-agent
   AGENT_DIR: agent
 
 jobs:
-  create-packages:
+  build-and-package:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
     strategy:
       matrix:
-        suffix: [linux-amd64, linux-arm64, linux-armv7, darwin-amd64, darwin-arm64, windows-amd64.exe]
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: linux
+            goarch: arm
+            goarm: 7
+            suffix: linux-armv7
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 如果是 tag 推送,先等待 binaries 构建完成
-      - name: Wait for binaries (if tag push)
-        if: github.event_name == 'push'
-        run: |
-          echo "Waiting for binaries to be built..."
-          sleep 120  # 等待2分钟让 binaries 构建
-
-      - name: Download binary artifact
-        uses: actions/download-artifact@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          name: binary-${{ matrix.suffix }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id || github.run_id }}
-        continue-on-error: true
+          go-version: '1.21'
 
-      # 如果上面失败,尝试从同一个 workflow run 下载
-      - name: Download binary artifact (fallback)
-        if: failure()
-        uses: actions/download-artifact@v4
+      - name: Cache Go modules
+        uses: actions/cache@v4
         with:
-          name: binary-${{ matrix.suffix }}
-        continue-on-error: true
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('agent/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
-      # 如果还是失败,手动构建
-      - name: Build binary (fallback)
-        if: failure()
+      - name: Build binary
         env:
           CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
         run: |
           cd ${{ env.AGENT_DIR }}
           
-          # 设置构建参数
-          case "${{ matrix.suffix }}" in
-            "linux-amd64") GOOS=linux GOARCH=amd64 ;;
-            "linux-arm64") GOOS=linux GOARCH=arm64 ;;
-            "linux-armv7") GOOS=linux GOARCH=arm GOARM=7 ;;
-            "darwin-amd64") GOOS=darwin GOARCH=amd64 ;;
-            "darwin-arm64") GOOS=darwin GOARCH=arm64 ;;
-            "windows-amd64.exe") GOOS=windows GOARCH=amd64 ;;
-          esac
-          
-          CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH GOARM=$GOARM \
-            go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" \
+          go build -ldflags "-s -w -X main.Version=${{ github.ref_name || github.sha }}" \
             -o ../${{ env.BINARY_NAME }}-${{ matrix.suffix }} main.go
-
-      - name: Verify binary exists
-        run: |
-          if [ ! -f "${{ env.BINARY_NAME }}-${{ matrix.suffix }}" ]; then
-            echo "Binary not found: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}"
-            ls -la
-            exit 1
+          
+          cd ..
+          
+          if [ "${{ matrix.goos }}" != "windows" ]; then
+            file ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
           fi
-          echo "Binary found: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}"
+          
+          echo "✅ Binary built: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}"
+          ls -la ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
 
       - name: Create release package
         run: |
@@ -243,7 +237,7 @@ jobs:
         run: |
           tar -czf ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz -C release-${{ matrix.suffix }} .
           
-          echo "Package created:"
+          echo "✅ Package created:"
           ls -la ${{ env.BINARY_NAME }}-${{ matrix.suffix }}.tar.gz
 
       - name: Upload package artifact
@@ -254,7 +248,7 @@ jobs:
           retention-days: 30
 
   create-release:
-    needs: create-packages
+    needs: build-and-package
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -352,91 +346,91 @@ jobs:
 
           # systemd 模式管理
           sudo systemctl status smartdns-log-agent      # 查看状态
-          sudo systemctl restart smartdns-log-agent     # 重启
+          sudo systemctl restart smartdns-log-agent     # 重启服务
           sudo journalctl -u smartdns-log-agent -f      # 查看日志
 
-              # Docker 模式管理
-              cd /opt/smartdns-log-agent && docker-compose ps        # 查看状态
-              cd /opt/smartdns-log-agent && docker-compose restart   # 重启服务
-              cd /opt/smartdns-log-agent && docker-compose logs -f   # 查看日志
+          # Docker 模式管理
+          cd /opt/smartdns-log-agent && docker-compose ps        # 查看状态
+          cd /opt/smartdns-log-agent && docker-compose restart   # 重启服务
+          cd /opt/smartdns-log-agent && docker-compose logs -f   # 查看日志
 
-              # 卸载
-              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- --uninstall
-              ```
+          # 卸载
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- --uninstall
+          ```
 
-              ### 🎯 使用场景示例
+          ### 🎯 使用场景示例
 
-              ```bash
-              # 场景1: 本地测试
-              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
-                -n 1 -H localhost -p "test123"
+          ```bash
+          # 场景1: 本地测试
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+            -n 1 -H localhost -p "test123"
 
-              # 场景2: 生产环境
-              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
-                -n 1 -N "prod-server-01" -H 192.168.1.100 -P 9000 -p "prod_password" -l /var/log/smartdns/query.log
+          # 场景2: 生产环境
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+            -n 1 -N "prod-server-01" -H 192.168.1.100 -P 9000 -p "prod_password" -l /var/log/smartdns/query.log
 
-              # 场景3: 自定义配置
-              curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
-                -n 2 -N "backup-node" -H clickhouse.example.com -P 9001 -d custom_logs -u admin -p "secret123"
-              ```
-              EOF
+          # 场景3: 自定义配置
+          curl -fsSL https://raw.githubusercontent.com/almightyyantao/smartdns-manager/main/agent/install.sh | sudo bash -s -- \
+            -n 2 -N "backup-node" -H clickhouse.example.com -P 9001 -d custom_logs -u admin -p "secret123"
+          ```
+          EOF
 
-              # 添加包信息
-              if [ $file_count -gt 0 ]; then
-                cat >> release-notes.md << EOF
+          # 添加包信息
+          if [ $file_count -gt 0 ]; then
+            cat >> release-notes.md << EOF
 
-              ### 📦 可用平台 ($file_count 个包)
+          ### 📦 可用平台 ($file_count 个包)
 
-              - **Linux**: amd64, arm64, armv7
-              - **macOS**: amd64 (Intel), arm64 (Apple Silicon) 
-              - **Windows**: amd64
+          - **Linux**: amd64, arm64, armv7
+          - **macOS**: amd64 (Intel), arm64 (Apple Silicon) 
+          - **Windows**: amd64
 
-              > 推荐使用上方的一键安装脚本,会自动检测系统架构并下载对应版本
-              EOF
-              else
-                cat >> release-notes.md << EOF
+          > 推荐使用上方的一键安装脚本,会自动检测系统架构并下载对应版本
+          EOF
+          else
+            cat >> release-notes.md << EOF
 
-              ### ⏳ 发布包构建中...
+          ### ⏳ 发布包构建中...
 
-              二进制文件和安装包正在后台构建,请:
-              1. 稍后刷新此页面查看完整包
-              2. 或从 [Actions](https://github.com/${{ github.repository }}/actions) 页面直接下载
-              3. 推荐直接使用上方的一键安装脚本
+          二进制文件和安装包正在后台构建,请:
+          1. 稍后刷新此页面查看完整包
+          2. 或从 [Actions](https://github.com/${{ github.repository }}/actions) 页面直接下载
+          3. 推荐直接使用上方的一键安装脚本
 
-              ### 📦 即将支持的平台
+          ### 📦 即将支持的平台
 
-              - **Linux**: amd64, arm64, armv7
-              - **macOS**: amd64 (Intel), arm64 (Apple Silicon)
-              - **Windows**: amd64
-              EOF
-              fi
+          - **Linux**: amd64, arm64, armv7
+          - **macOS**: amd64 (Intel), arm64 (Apple Silicon)
+          - **Windows**: amd64
+          EOF
+          fi
 
-              # 添加构建时间和版本信息
-              echo "" >> release-notes.md
-              echo "---" >> release-notes.md
-              echo "*构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')*" >> release-notes.md
-              echo "*版本: ${{ github.ref_name }}*" >> release-notes.md
+          # 添加构建时间和版本信息
+          echo "" >> release-notes.md
+          echo "---" >> release-notes.md
+          echo "*构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')*" >> release-notes.md
+          echo "*版本: ${{ github.ref_name }}*" >> release-notes.md
 
-          - name: Create GitHub Release
-            uses: softprops/action-gh-release@v2
-            with:
-              tag_name: ${{ github.ref_name }}
-              name: SmartDNS Log Agent ${{ github.ref_name }}
-              body_path: release-notes.md
-              files: releases/*
-              draft: false
-              prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
-              generate_release_notes: true
-              make_latest: true
-            env:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SmartDNS Log Agent ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: releases/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          - name: Cleanup old artifacts
-            if: success()
-            run: |
-              echo "🧹 Cleaning up intermediate artifacts..."
-
-              # 可以在这里添加清理逻辑，比如删除临时文件等
-              # 但package artifacts会自动过期，所以通常不需要手动清理
-
-              echo "✅ Release creation completed successfully!"
+      - name: Cleanup old artifacts
+        if: success()
+        run: |
+          echo "🧹 Cleaning up intermediate artifacts..."
+          
+          # 可以在这里添加清理逻辑，比如删除临时文件等
+          # 但package artifacts会自动过期，所以通常不需要手动清理
+          
+          echo "✅ Release creation completed successfully!"
