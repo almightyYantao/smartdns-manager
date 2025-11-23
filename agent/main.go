@@ -100,9 +100,9 @@ func main() {
 	go agent.startHTTPServer()
 
 	// 启动日志收集
-	if err := agent.startLogCollection(); err != nil {
-		log.Printf("❌ 启动日志收集失败: %v", err)
-	}
+	//if err := agent.startLogCollection(); err != nil {
+	//	log.Printf("❌ 启动日志收集失败: %v", err)
+	//}
 
 	log.Println("✅ Agent 启动成功")
 
