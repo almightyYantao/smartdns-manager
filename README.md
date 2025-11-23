@@ -104,7 +104,22 @@
 - Docker 20.10+
 - Docker Compose 2.0+
 
-#### 部署步骤
+#### 🚀 快速使用
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/almightyYantao/smartdns-manager:0.0.1
+
+# 或使用 latest 标签
+docker pull ghcr.io/almightyYantao/smartdns-manager:latest
+```
+
+#### 🏗️ 支持架构
+
+- linux/amd64 (x86_64)
+- linux/arm64 (ARM64/aarch64)
+
+### 部署步骤
 
 **1. 克隆项目**
 ```bash
