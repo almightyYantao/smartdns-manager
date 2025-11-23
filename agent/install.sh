@@ -90,7 +90,7 @@ download_agent() {
     DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${BINARY_NAME}-${BINARY_ARCH}.tar.gz"
     
     if command -v wget >/dev/null 2>&1; then
-        wget -q --show-progress "$DOWNLOAD_URL" -O agent.tar.gz
+        wget -q "$DOWNLOAD_URL" -O agent.tar.gz
     elif command -v curl >/dev/null 2>&1; then
         curl -L "$DOWNLOAD_URL" -o agent.tar.gz
     else
