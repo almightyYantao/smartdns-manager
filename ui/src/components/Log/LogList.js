@@ -110,10 +110,10 @@ const LogList = ({ nodeId, nodeName }) => {
       key: "timestamp",
       width: 180,
       render: (time) => (
-        <Tooltip title={moment.utc(time).format("YYYY-MM-DD HH:mm:ss")}>
+        <Tooltip title={moment(time).format("YYYY-MM-DD HH:mm:ss")}>
           <Space size={4}>
             <ClockCircleOutlined style={{ color: "#1890ff" }} />
-            <span>{moment.utc(time).format("HH:mm:ss")}</span>
+            <span>{moment(time).format("HH:mm:ss")}</span>
           </Space>
         </Tooltip>
       ),
