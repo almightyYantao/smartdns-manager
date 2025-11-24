@@ -148,35 +148,101 @@ download_agent() {
 
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
+    log "临时目录: $TEMP_DIR"
 
     # 下载最新版本
     DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${BINARY_NAME}-${BINARY_ARCH}.tar.gz"
+    log "下载地址: $DOWNLOAD_URL"
+    log "架构: $BINARY_ARCH"
 
-    if command -v wget >/dev/null 2>&1; then
+    # 先测试能否访问 GitHub API 获取最新版本
+    log "获取最新版本信息..."
+    if command -v curl >/dev/null 2>&1; then
         if [ -n "$PROXY_URL" ]; then
-            # wget 使用环境变量代理
-            wget -q "$DOWNLOAD_URL" -O agent.tar.gz
+            LATEST_RELEASE=$(curl --proxy "$PROXY_URL" -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' 2>/dev/null || echo "")
         else
-            wget -q "$DOWNLOAD_URL" -O agent.tar.gz
+            LATEST_RELEASE=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' 2>/dev/null || echo "")
+        fi
+
+        if [ -n "$LATEST_RELEASE" ]; then
+            log "最新版本: $LATEST_RELEASE"
+            # 使用具体版本的下载链接
+            DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${LATEST_RELEASE}/${BINARY_NAME}-${BINARY_ARCH}.tar.gz"
+        else
+            warn "无法获取最新版本信息，使用默认下载链接"
+        fi
+    fi
+
+    log "最终下载地址: $DOWNLOAD_URL"
+
+    # 下载文件
+    if command -v wget >/dev/null 2>&1; then
+        log "使用 wget 下载..."
+        if [ -n "$PROXY_URL" ]; then
+            # wget 使用环境变量代理，已经设置了
+            if ! wget -v "$DOWNLOAD_URL" -O agent.tar.gz; then
+                error "wget 下载失败"
+                return 1
+            fi
+        else
+            if ! wget -v "$DOWNLOAD_URL" -O agent.tar.gz; then
+                error "wget 下载失败"
+                return 1
+            fi
         fi
     elif command -v curl >/dev/null 2>&1; then
+        log "使用 curl 下载..."
         if [ -n "$PROXY_URL" ]; then
-            curl --proxy "$PROXY_URL" -L "$DOWNLOAD_URL" -o agent.tar.gz
+            if ! curl -L --proxy "$PROXY_URL" -v "$DOWNLOAD_URL" -o agent.tar.gz; then
+                error "curl 下载失败"
+                return 1
+            fi
         else
-            curl -L "$DOWNLOAD_URL" -o agent.tar.gz
+            if ! curl -L -v "$DOWNLOAD_URL" -o agent.tar.gz; then
+                error "curl 下载失败"
+                return 1
+            fi
         fi
     else
         error "需要 wget 或 curl"
-        exit 1
+        return 1
     fi
 
+    # 检查下载的文件
     if [ ! -f "agent.tar.gz" ]; then
-        error "下载失败"
-        exit 1
+        error "下载的文件不存在"
+        return 1
     fi
 
-    tar -xzf agent.tar.gz
+    # 检查文件大小
+    FILE_SIZE=$(stat -c%s agent.tar.gz 2>/dev/null || stat -f%z agent.tar.gz 2>/dev/null || echo 0)
+    log "下载文件大小: $FILE_SIZE bytes"
+
+    if [ "$FILE_SIZE" -lt 1000 ]; then
+        error "下载的文件太小，可能下载失败"
+        log "文件内容:"
+        cat agent.tar.gz
+        return 1
+    fi
+
+    # 解压文件
+    log "解压文件..."
+    if ! tar -xzf agent.tar.gz; then
+        error "解压失败"
+        return 1
+    fi
+
+    # 检查解压后的文件
+    EXPECTED_BINARY="${BINARY_NAME}-${BINARY_ARCH}"
+    if [ ! -f "$EXPECTED_BINARY" ]; then
+        error "找不到预期的二进制文件: $EXPECTED_BINARY"
+        log "当前目录内容:"
+        ls -la
+        return 1
+    fi
+
     log "下载完成"
+    return 0
 }
 
 install_systemd() {
