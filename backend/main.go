@@ -190,7 +190,7 @@ func main() {
 	// 启动服务器
 	port := config.GetConfig().ServerPort
 	log.Printf("Server starting on port %s", port)
-	if err := r.Run(":" + port); err != nil {
+	if err := r.Run("0.0.0.0:" + port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
 }

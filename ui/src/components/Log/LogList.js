@@ -22,8 +22,10 @@ import {
   ClockCircleOutlined,
   SyncOutlined,
   PauseOutlined,
+  GlobalOutlined,
+  CloudServerOutlined,
 } from "@ant-design/icons";
-import { getDNSLogs } from "../../api";
+import { getDNSLogs, getGroups, getServers } from "../../api";
 import moment from "moment";
 
 const { RangePicker } = DatePicker;
@@ -31,39 +33,57 @@ const { Option } = Select;
 
 const LogList = ({ nodeId, nodeName }) => {
   const [logs, setLogs] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false); // 自动刷新开关
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 20,
     total: 0,
   });
   const [form] = Form.useForm();
-
-  // 定时器引用
   const [intervalRef, setIntervalRef] = useState(null);
 
   useEffect(() => {
+    loadGroups();
+    loadServers();
     loadLogs();
   }, [nodeId, pagination.current, pagination.pageSize]);
+
+  // 加载分组数据
+  const loadGroups = async () => {
+    try {
+      const response = await getGroups();
+      setGroups(response.data || []);
+    } catch (error) {
+      console.error("加载分组失败:", error);
+    }
+  };
+
+  // 加载服务器数据
+  const loadServers = async () => {
+    try {
+      const response = await getServers();
+      setServers(response.data || []);
+    } catch (error) {
+      console.error("加载服务器失败:", error);
+    }
+  };
 
   // 处理自动刷新开关
   useEffect(() => {
     if (autoRefresh) {
-      // 开启自动刷新
       const interval = setInterval(() => {
         loadLogs(true);
-      }, 30000); // 30秒刷新一次
+      }, 30000);
       setIntervalRef(interval);
     } else {
-      // 关闭自动刷新
       if (intervalRef) {
         clearInterval(intervalRef);
         setIntervalRef(null);
       }
     }
-
-    // 清理函数
     return () => {
       if (intervalRef) {
         clearInterval(intervalRef);
@@ -71,7 +91,6 @@ const LogList = ({ nodeId, nodeName }) => {
     };
   }, [autoRefresh]);
 
-  // 组件卸载时清理定时器
   useEffect(() => {
     return () => {
       if (intervalRef) {
@@ -90,13 +109,11 @@ const LogList = ({ nodeId, nodeName }) => {
         page_size: pagination.pageSize,
         ...values,
       };
-
       if (values.time_range) {
         params.start_time = values.time_range[0].toISOString();
         params.end_time = values.time_range[1].toISOString();
         delete params.time_range;
       }
-
       const response = await getDNSLogs(params);
       setLogs(response.data.logs || []);
       setPagination({
@@ -125,10 +142,54 @@ const LogList = ({ nodeId, nodeName }) => {
     setPagination(newPagination);
   };
 
-  // 处理自动刷新开关变化
   const handleAutoRefreshChange = (checked) => {
     setAutoRefresh(checked);
   };
+
+  // 快速时间选择处理函数
+  const handleQuickTimeSelect = (minutes) => {
+    const now = moment();
+    const start = moment().subtract(minutes, 'minutes');
+    form.setFieldsValue({
+      time_range: [start, now]
+    });
+  };
+
+  // 自定义时间范围预设
+  const getTimeRangePresets = () => [
+    {
+      label: '最近1分钟',
+      value: [moment().subtract(1, 'minutes'), moment()],
+    },
+    {
+      label: '最近3分钟',
+      value: [moment().subtract(3, 'minutes'), moment()],
+    },
+    {
+      label: '最近5分钟',
+      value: [moment().subtract(5, 'minutes'), moment()],
+    },
+    {
+      label: '最近10分钟',
+      value: [moment().subtract(10, 'minutes'), moment()],
+    },
+    {
+      label: '最近30分钟',
+      value: [moment().subtract(30, 'minutes'), moment()],
+    },
+    {
+      label: '最近1小时',
+      value: [moment().subtract(1, 'hours'), moment()],
+    },
+    {
+      label: '最近3小时',
+      value: [moment().subtract(3, 'hours'), moment()],
+    },
+    {
+      label: '今天',
+      value: [moment().startOf('day'), moment()],
+    },
+  ];
 
   const getQueryTypeTag = (type) => {
     const typeMap = {
@@ -140,6 +201,123 @@ const LogList = ({ nodeId, nodeName }) => {
     };
     const config = typeMap[type] || { color: "default", text: `TYPE ${type}` };
     return <Tag color={config.color}>{config.text}</Tag>;
+  };
+
+  // 根据分组名称获取对应的服务器列表
+  const getServersByGroup = (groupName) => {
+    return servers.filter(server => 
+      server.groups && server.groups.includes(groupName)
+    );
+  };
+
+  // 提取服务器地址的IP部分
+  const extractServerIP = (address) => {
+    if (!address) return '';
+    
+    let cleanAddress = address;
+    cleanAddress = cleanAddress.replace(/^(https?|tls):\/\//, '');
+    cleanAddress = cleanAddress.split('/')[0];
+    cleanAddress = cleanAddress.split(':')[0];
+    
+    return cleanAddress;
+  };
+
+  // 渲染上游分组和服务器信息
+  const renderUpstreamInfo = (groupName) => {
+    if (!groupName) {
+      return <span style={{ color: "#999" }}>-</span>;
+    }
+
+    const groupConfig = groups.find(g => g.name === groupName);
+    const groupColor = groupConfig?.color || '#1890ff';
+    const groupDescription = groupConfig?.description;
+    const groupServers = getServersByGroup(groupName);
+
+    return (
+      <div style={{ minWidth: 160 }}>
+        <Space direction="vertical" size={4}>
+          <Tooltip title={groupDescription || `分组: ${groupName}`}>
+            <Tag 
+              color={groupColor} 
+              icon={<GlobalOutlined />}
+              style={{ margin: 0, fontSize: '11px', fontWeight: 'bold' }}
+            >
+              {groupName}
+            </Tag>
+          </Tooltip>
+          
+          {groupServers.length > 0 ? (
+            <div style={{ maxHeight: '80px', overflowY: 'auto' }}>
+              {groupServers.map((server, index) => {
+                const serverIP = extractServerIP(server.address);
+                const serverType = server.type?.toUpperCase() || 'UDP';
+                
+                return (
+                  <Tooltip 
+                    key={index}
+                    title={`${serverType}: ${server.address}`}
+                  >
+                    <div style={{ 
+                      fontSize: '10px', 
+                      color: '#666',
+                      fontFamily: 'monospace',
+                      background: '#f8f9fa',
+                      padding: '2px 6px',
+                      margin: '1px 0',
+                      borderRadius: '3px',
+                      border: '1px solid #e9ecef',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <CloudServerOutlined style={{ fontSize: '8px', color: '#999' }} />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {serverIP}
+                      </span>
+                      <Tag 
+                        color={server.type === 'https' ? 'green' : 
+                              server.type === 'tls' ? 'blue' : 
+                              server.type === 'tcp' ? 'orange' : 'default'}
+                        style={{ 
+                          fontSize: '8px', 
+                          margin: 0, 
+                          padding: '0 3px',
+                          lineHeight: '12px',
+                          minWidth: 'auto'
+                        }}
+                      >
+                        {serverType}
+                      </Tag>
+                    </div>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ 
+              fontSize: '10px', 
+              color: '#999',
+              fontStyle: 'italic',
+              padding: '2px 0'
+            }}>
+              无配置服务器
+            </div>
+          )}
+          
+          {groupServers.length > 0 && (
+            <div style={{ 
+              fontSize: '9px', 
+              color: '#999', 
+              textAlign: 'center',
+              borderTop: '1px solid #f0f0f0',
+              paddingTop: '2px'
+            }}>
+              共 {groupServers.length} 个服务器
+            </div>
+          )}
+        </Space>
+      </div>
+    );
   };
 
   const columns = [
@@ -211,8 +389,8 @@ const LogList = ({ nodeId, nodeName }) => {
       title: "所属上游",
       dataIndex: "group",
       key: "group",
-      width: 100,
-      align: "right",
+      width: 180,
+      render: (groupName) => renderUpstreamInfo(groupName),
     },
     {
       title: "结果",
@@ -277,18 +455,100 @@ const LogList = ({ nodeId, nodeName }) => {
           </Col>
           <Col xs={24} sm={12} md={6}>
             <Form.Item
+              name="group"
+              label="所属上游"
+              style={{ marginBottom: 8 }}
+            >
+              <Select placeholder="选择分组" allowClear>
+                {groups.map(group => (
+                  <Option key={group.id} value={group.name}>
+                    <Space>
+                      <div
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          backgroundColor: group.color,
+                          display: 'inline-block'
+                        }}
+                      />
+                      {group.name}
+                      <span style={{ color: '#999', fontSize: '12px' }}>
+                        ({getServersByGroup(group.name).length}个服务器)
+                      </span>
+                    </Space>
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </Col>
+        </Row>
+        
+        {/* 时间范围选择行 */}
+        <Row gutter={16}>
+          <Col xs={24} sm={12} md={8}>
+            <Form.Item
               name="time_range"
               label="时间范围"
               style={{ marginBottom: 8 }}
             >
               <RangePicker
-                showTime
+                showTime={{
+                  format: 'HH:mm:ss',
+                }}
                 format="YYYY-MM-DD HH:mm:ss"
                 style={{ width: "100%" }}
+                presets={getTimeRangePresets()}
+                placeholder={['开始时间', '结束时间']}
               />
             </Form.Item>
           </Col>
+          <Col xs={24} sm={12} md={16}>
+            <Form.Item
+              label="快速选择"
+              style={{ marginBottom: 8 }}
+            >
+              <Space wrap>
+                <Button 
+                  size="small" 
+                  onClick={() => handleQuickTimeSelect(1)}
+                  type="dashed"
+                >
+                  1分钟
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => handleQuickTimeSelect(3)}
+                  type="dashed"
+                >
+                  3分钟
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => handleQuickTimeSelect(5)}
+                  type="dashed"
+                >
+                  5分钟
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => handleQuickTimeSelect(10)}
+                  type="dashed"
+                >
+                  10分钟
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => handleQuickTimeSelect(30)}
+                  type="dashed"
+                >
+                  30分钟
+                </Button>
+              </Space>
+            </Form.Item>
+          </Col>
         </Row>
+
         <Row>
           <Col span={24}>
             <Space>
@@ -342,7 +602,7 @@ const LogList = ({ nodeId, nodeName }) => {
           pageSizeOptions: ["10", "20", "50", "100", "500"],
         }}
         onChange={handleTableChange}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1500 }}
         size="small"
         locale={{
           emptyText: (
