@@ -68,6 +68,20 @@ func main() {
 		logGroup.GET("", handlers.GetDNSLogs)                                     // 获取日志列表（支持按节点过滤）
 	}
 
+	handlers.InitVersionHandler("docker-v0.0.3")
+	apiVersion := r.Group("/api")
+	apiVersion.Use(middleware.AuthMiddleware())
+	apiVersion.Use(middleware.AdminRequired())
+	{
+		// 版本管理相关路由
+		version := apiVersion.Group("/version")
+		{
+			version.GET("/check", handlers.CheckVersion)
+			version.GET("/info", handlers.GetSystemInfo)
+			version.GET("/history", handlers.GetVersionHistory)
+		}
+	}
+
 	// 需要认证的路由
 	protected := r.Group("/api")
 	protected.Use(middleware.AuthMiddleware())

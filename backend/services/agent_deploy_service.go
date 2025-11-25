@@ -36,12 +36,26 @@ type DeployResponse struct {
 
 func NewAgentDeployService() *AgentDeployService {
 	return &AgentDeployService{
-		sshTimeout: 300 * time.Second, // 5分钟超时
+		sshTimeout: 1200 * time.Second, // 5分钟超时
 	}
 }
 
 func (s *AgentDeployService) DeployAgent(node *models.Node, req *models.DeployAgentRequest) (*DeployResponse, error) {
 	log.Printf("开始部署 Agent 到节点 %s (%s)", node.Name, node.Host)
+
+	// 检查请求中是否配置了代理，如果有则赋值到node中
+	if req.ProxyHost != "" && req.ProxyPort > 0 {
+		log.Printf("检测到代理配置，代理类型: %s, 代理地址: %s:%d", req.ProxyType, req.ProxyHost, req.ProxyPort)
+
+		node.ProxyConfig = &models.ProxyConfig{
+			Enabled:   true,
+			ProxyType: "socks5",
+			ProxyHost: req.ProxyHost,
+			ProxyPort: req.ProxyPort,
+			ProxyUser: req.ProxyUser,
+			ProxyPass: req.ProxyPass,
+		}
+	}
 
 	// 创建 SSH 客户端
 	sshClient, err := NewSSHClient(node)
@@ -52,7 +66,6 @@ func (s *AgentDeployService) DeployAgent(node *models.Node, req *models.DeployAg
 
 	// 生成安装命令
 	installCmd := s.generateInstallCommand(node, req)
-
 	log.Printf("执行安装命令: %s", installCmd)
 
 	// 执行安装
@@ -66,7 +79,6 @@ func (s *AgentDeployService) DeployAgent(node *models.Node, req *models.DeployAg
 
 	// 检查安装结果
 	success := strings.Contains(output, "安装成功") || strings.Contains(output, "installation successful")
-
 	response := &DeployResponse{
 		Success:     success,
 		Message:     "Agent 部署完成",
@@ -113,19 +125,77 @@ func (s *AgentDeployService) generateInstallCommand(node *models.Node, req *mode
 	if req.ClickHousePassword != "" {
 		params = append(params, fmt.Sprintf("-p \"%s\"", req.ClickHousePassword))
 	}
-
 	if req.LogFilePath != "" {
 		params = append(params, fmt.Sprintf("-l \"%s\"", req.LogFilePath))
 	}
-
 	if req.DeployMode != "" {
 		params = append(params, fmt.Sprintf("--mode %s", req.DeployMode))
 	}
 
+	// 如果有代理配置，添加代理参数
+	if node.ProxyConfig != nil && node.ProxyConfig.Enabled {
+		proxyURL := s.buildProxyURL(node.ProxyConfig)
+		log.Printf(proxyURL)
+		params = append(params, fmt.Sprintf("--proxy \"%s\"", proxyURL))
+	}
+	//log.Printf(node.ProxyConfig.Enabled)
+
 	paramStr := strings.Join(params, " ")
 
-	// 生成安装命令
-	return fmt.Sprintf("curl -sSL %s | sudo bash -s -- %s", repoURL, paramStr)
+	var commands []string
+
+	// 如果配置了代理，设置环境变量并使用代理下载
+	if node.ProxyConfig != nil && node.ProxyConfig.Enabled {
+		proxyURL := s.buildProxyURL(node.ProxyConfig)
+
+		// 设置环境变量
+		commands = append(commands,
+			fmt.Sprintf("export http_proxy=%s", proxyURL),
+			fmt.Sprintf("export https_proxy=%s", proxyURL),
+			fmt.Sprintf("export HTTP_PROXY=%s", proxyURL),
+			fmt.Sprintf("export HTTPS_PROXY=%s", proxyURL),
+		)
+
+		// 使用代理下载并执行
+		curlCmd := fmt.Sprintf("curl -sSL --proxy %s %s", proxyURL, repoURL)
+		commands = append(commands, fmt.Sprintf("%s | sudo -E bash -s -- %s", curlCmd, paramStr))
+
+		log.Printf("使用代理 %s 下载并执行安装脚本", proxyURL)
+	} else {
+		// 直接下载执行
+		curlCmd := fmt.Sprintf("curl -sSL %s", repoURL)
+		commands = append(commands, fmt.Sprintf("%s | sudo bash -s -- %s", curlCmd, paramStr))
+	}
+
+	// 使用 && 连接命令确保在同一shell会话中执行
+	return strings.Join(commands, " && ")
+}
+
+func (s *AgentDeployService) buildProxyURL(proxyConfig *models.ProxyConfig) string {
+	var proxyURL string
+
+	switch proxyConfig.ProxyType {
+	case "socks5":
+		if proxyConfig.ProxyUser != "" && proxyConfig.ProxyPass != "" {
+			proxyURL = fmt.Sprintf("socks5://%s:%s@%s:%d",
+				proxyConfig.ProxyUser, proxyConfig.ProxyPass,
+				proxyConfig.ProxyHost, proxyConfig.ProxyPort)
+		} else {
+			proxyURL = fmt.Sprintf("socks5://%s:%d",
+				proxyConfig.ProxyHost, proxyConfig.ProxyPort)
+		}
+	case "http":
+		if proxyConfig.ProxyUser != "" && proxyConfig.ProxyPass != "" {
+			proxyURL = fmt.Sprintf("http://%s:%s@%s:%d",
+				proxyConfig.ProxyUser, proxyConfig.ProxyPass,
+				proxyConfig.ProxyHost, proxyConfig.ProxyPort)
+		} else {
+			proxyURL = fmt.Sprintf("http://%s:%d",
+				proxyConfig.ProxyHost, proxyConfig.ProxyPort)
+		}
+	}
+
+	return proxyURL
 }
 
 func (s *AgentDeployService) CheckAgentStatus(node *models.Node) (*AgentStatus, error) {

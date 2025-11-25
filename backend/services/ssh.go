@@ -5,15 +5,21 @@ import (
 	"context"
 	"fmt"
 	_ "io/ioutil"
+	"log"
+	"net"
+	"net/http"
+	"net/url"
 	"time"
 
 	"smartdns-manager/models"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/proxy"
 )
 
 type SSHClient struct {
-	client *ssh.Client
+	client     *ssh.Client
+	jumpClient *ssh.Client
 }
 
 func NewSSHClient(node *models.Node) (*SSHClient, error) {
@@ -38,6 +44,10 @@ func NewSSHClient(node *models.Node) (*SSHClient, error) {
 		Timeout:         10 * time.Second,
 	}
 
+	//if node.ProxyConfig != nil && node.ProxyConfig.Enabled {
+	//	return NewSSHClientWithProxy(node, config)
+	//}
+
 	addr := fmt.Sprintf("%s:%d", node.Host, node.Port)
 	client, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
@@ -47,8 +57,161 @@ func NewSSHClient(node *models.Node) (*SSHClient, error) {
 	return &SSHClient{client: client}, nil
 }
 
+func NewSSHClientWithProxy(node *models.Node, config *ssh.ClientConfig) (*SSHClient, error) {
+	proxyConfig := node.ProxyConfig
+
+	switch proxyConfig.ProxyType {
+	case "socks5":
+		return newSSHClientWithSOCKS5(node, config, proxyConfig)
+	case "http":
+		return newSSHClientWithHTTP(node, config, proxyConfig)
+	case "ssh":
+		return newSSHClientWithJumpHost(node, config, proxyConfig)
+	default:
+		return nil, fmt.Errorf("不支持的代理类型: %s", proxyConfig.ProxyType)
+	}
+}
+
+// SOCKS5代理连接
+func newSSHClientWithSOCKS5(node *models.Node, config *ssh.ClientConfig, proxyConfig *models.ProxyConfig) (*SSHClient, error) {
+	// 创建SOCKS5代理地址
+	proxyAddr := fmt.Sprintf("%s:%d", proxyConfig.ProxyHost, proxyConfig.ProxyPort)
+
+	var auth *proxy.Auth
+	if proxyConfig.ProxyUser != "" {
+		auth = &proxy.Auth{
+			User:     proxyConfig.ProxyUser,
+			Password: proxyConfig.ProxyPass,
+		}
+	}
+
+	// 创建SOCKS5拨号器
+	dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+	if err != nil {
+		return nil, fmt.Errorf("创建SOCKS5代理失败: %w", err)
+	}
+
+	// 通过代理连接目标主机
+	targetAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+	conn, err := dialer.Dial("tcp", targetAddr)
+	if err != nil {
+		return nil, fmt.Errorf("通过SOCKS5代理连接失败: %w", err)
+	}
+
+	// 建立SSH连接
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, targetAddr, config)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("SSH握手失败: %w", err)
+	}
+
+	client := ssh.NewClient(sshConn, chans, reqs)
+	return &SSHClient{client: client}, nil
+}
+
+func newSSHClientWithHTTP(node *models.Node, config *ssh.ClientConfig, proxy *models.ProxyConfig) (*SSHClient, error) {
+	// 创建HTTP代理连接
+	proxyURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:%d", proxy.ProxyHost, proxy.ProxyPort),
+	}
+
+	if proxy.ProxyUser != "" {
+		proxyURL.User = url.UserPassword(proxy.ProxyUser, proxy.ProxyPass)
+	}
+
+	// 使用HTTP CONNECT方法
+	dialer := &net.Dialer{Timeout: 30 * time.Second}
+	transport := &http.Transport{
+		Proxy: http.ProxyURL(proxyURL),
+		Dial:  dialer.Dial,
+	}
+
+	client := &http.Client{Transport: transport}
+
+	// 建立CONNECT隧道
+	targetAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+	req, err := http.NewRequest("CONNECT", targetAddr, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP代理连接失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP代理返回错误状态码: %d", resp.StatusCode)
+	}
+
+	// 获取底层连接
+	conn := resp.Body.(net.Conn) // 需要类型断言，实际实现可能需要更复杂的处理
+
+	// 建立SSH连接
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, targetAddr, config)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("SSH握手失败: %w", err)
+	}
+
+	sshClient := ssh.NewClient(sshConn, chans, reqs)
+	return &SSHClient{client: sshClient}, nil
+}
+
+// SSH跳板机连接
+func newSSHClientWithJumpHost(node *models.Node, config *ssh.ClientConfig, proxy *models.ProxyConfig) (*SSHClient, error) {
+	// 连接跳板机
+	jumpConfig := &ssh.ClientConfig{
+		User: proxy.JumpUser,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(proxy.JumpPassword),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         30 * time.Second,
+	}
+
+	jumpAddr := fmt.Sprintf("%s:%d", proxy.JumpHost, proxy.JumpPort)
+	jumpClient, err := ssh.Dial("tcp", jumpAddr, jumpConfig)
+	if err != nil {
+		return nil, fmt.Errorf("连接跳板机失败: %w", err)
+	}
+
+	// 通过跳板机连接目标主机
+	targetAddr := fmt.Sprintf("%s:%d", node.Host, node.Port)
+	conn, err := jumpClient.Dial("tcp", targetAddr)
+	if err != nil {
+		jumpClient.Close()
+		return nil, fmt.Errorf("通过跳板机连接目标主机失败: %w", err)
+	}
+
+	// 建立SSH连接
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, targetAddr, config)
+	if err != nil {
+		conn.Close()
+		jumpClient.Close()
+		return nil, fmt.Errorf("SSH握手失败: %w", err)
+	}
+
+	client := ssh.NewClient(sshConn, chans, reqs)
+	return &SSHClient{
+		client:     client,
+		jumpClient: jumpClient, // 保存跳板机连接，用于后续关闭
+	}, nil
+}
+
 func (c *SSHClient) Close() error {
-	return c.client.Close()
+	var err error
+	if c.client != nil {
+		err = c.client.Close()
+	}
+	if c.jumpClient != nil {
+		if jumpErr := c.jumpClient.Close(); jumpErr != nil && err == nil {
+			err = jumpErr
+		}
+	}
+	return err
 }
 
 func (c *SSHClient) ExecuteCommand(cmd string) (string, error) {
@@ -196,6 +359,11 @@ func (client *SSHClient) ExecuteCommandWithTimeout(command string, timeout time.
 	// 等待结果或超时
 	select {
 	case res := <-resultChan:
+		// 即使有错误也返回输出，这样可以看到错误信息
+		if res.err != nil {
+			log.Printf("SSH命令执行出错: %v", res.err)
+			log.Printf("命令输出: %s", res.output)
+		}
 		return res.output, res.err
 	case <-ctx.Done():
 		session.Signal(ssh.SIGTERM)

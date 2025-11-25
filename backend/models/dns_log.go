@@ -78,4 +78,10 @@ type DeployAgentRequest struct {
 	LogFilePath        string `json:"log_file_path"`
 	BatchSize          int    `json:"batch_size"`
 	FlushInterval      int    `json:"flush_interval"`
+
+	ProxyType string `json:"proxy_type"` // "socks5", "http", "ssh"
+	ProxyHost string `json:"proxy_host"`
+	ProxyPort int    `json:"proxy_port"`
+	ProxyUser string `json:"proxy_user,omitempty"`
+	ProxyPass string `json:"proxy_pass,omitempty"`
 }

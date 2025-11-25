@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -335,6 +337,11 @@ func GetDNSLogs(c *gin.Context) {
 		pageSize = 20
 	}
 
+	// 限制大数据量查询的页面大小
+	if pageSize > 50 {
+		pageSize = 50
+	}
+
 	// 构建过滤条件
 	filters := make(map[string]interface{})
 
@@ -362,38 +369,87 @@ func GetDNSLogs(c *gin.Context) {
 		}
 	}
 
-	// 时间范围
+	// 时间范围 - 改进时间解析
 	if startTimeStr := c.Query("start_time"); startTimeStr != "" {
-		if startTime, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
-			filters["start_time"] = startTime
+		// 支持多种时间格式
+		formats := []string{
+			time.RFC3339,
+			"2006-01-02T15:04:05Z",
+			"2006-01-02 15:04:05",
+			"2006-01-02",
+		}
+
+		for _, format := range formats {
+			if startTime, err := time.Parse(format, startTimeStr); err == nil {
+				filters["start_time"] = startTime
+				break
+			}
 		}
 	}
 
 	if endTimeStr := c.Query("end_time"); endTimeStr != "" {
-		if endTime, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
-			filters["end_time"] = endTime
+		formats := []string{
+			time.RFC3339,
+			"2006-01-02T15:04:05Z",
+			"2006-01-02 15:04:05",
+			"2006-01-02",
+		}
+
+		for _, format := range formats {
+			if endTime, err := time.Parse(format, endTimeStr); err == nil {
+				filters["end_time"] = endTime
+				break
+			}
 		}
 	}
 
-	// 从 ClickHouse 查询日志
-	logs, total, err := logMonitorService.GetLogs(page, pageSize, filters)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取日志失败: " + err.Error(),
-		})
-		return
-	}
+	// 添加请求超时控制
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"logs":      logs,
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
-		},
-	})
+	// 在新的上下文中查询
+	done := make(chan bool, 1)
+	var logs []models.DNSLog
+	var total int64
+	var err error
+
+	go func() {
+		logs, total, err = logMonitorService.GetLogs(page, pageSize, filters)
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		if err != nil {
+			log.Printf("❌ 获取日志失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "获取日志失败: " + err.Error(),
+			})
+			return
+		}
+
+		// 确保 logs 不为 nil
+		if logs == nil {
+			logs = make([]models.DNSLog, 0)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data": gin.H{
+				"logs":      logs,
+				"total":     total,
+				"page":      page,
+				"page_size": pageSize,
+			},
+		})
+
+	case <-ctx.Done():
+		c.JSON(http.StatusRequestTimeout, gin.H{
+			"success": false,
+			"message": "查询超时，请缩小时间范围或添加更多过滤条件",
+		})
+	}
 }
 
 // GetLogStats 获取日志统计信息（从 ClickHouse 查询）

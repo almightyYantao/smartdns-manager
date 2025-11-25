@@ -39,7 +39,8 @@ func NewLogMonitorServiceCH(conn driver.Conn) LogMonitorInterface {
 
 // GetLogs 获取DNS日志列表（实现接口）
 func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]interface{}) ([]models.DNSLog, int64, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	// 构建查询条件
 	where := []string{"1=1"}
@@ -49,44 +50,89 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 		where = append(where, "node_id = ?")
 		args = append(args, uint32(nodeID))
 	}
+
 	if clientIP, ok := filters["client_ip"].(string); ok && clientIP != "" {
 		where = append(where, "client_ip = ?")
 		args = append(args, clientIP)
 	}
+
 	if domain, ok := filters["domain"].(string); ok && domain != "" {
-		where = append(where, "domain LIKE ?")
+		// 优化模糊查询
+		where = append(where, "domain ILIKE ?")
 		args = append(args, "%"+domain+"%")
 	}
+
 	if queryType, ok := filters["query_type"].(int); ok {
 		where = append(where, "query_type = ?")
 		args = append(args, uint16(queryType))
 	}
+
+	// 时间范围查询优化 - 确保有时间范围限制
+	hasTimeFilter := false
 	if startTime, ok := filters["start_time"].(time.Time); ok {
 		where = append(where, "timestamp >= ?")
 		args = append(args, startTime)
+		hasTimeFilter = true
 	}
+
 	if endTime, ok := filters["end_time"].(time.Time); ok {
 		where = append(where, "timestamp <= ?")
 		args = append(args, endTime)
+		hasTimeFilter = true
+	}
+
+	// 如果没有时间过滤条件，默认查询最近24小时
+	if !hasTimeFilter {
+		where = append(where, "timestamp >= ?")
+		args = append(args, time.Now().Add(-24*time.Hour))
 	}
 
 	whereClause := strings.Join(where, " AND ")
 
-	// 查询总数
+	// 使用估算总数来提高性能（对于大数据集）
 	var total uint64
+	var err error
+
+	// 先尝试精确计数，但设置较短超时
+	countCtx, countCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer countCancel()
+
 	countQuery := fmt.Sprintf("SELECT count() FROM dns_query_log WHERE %s", whereClause)
-	err := s.conn.QueryRow(ctx, countQuery, args...).Scan(&total)
+	err = s.conn.QueryRow(countCtx, countQuery, args...).Scan(&total)
+
 	if err != nil {
-		log.Printf("❌ 查询总数失败: %v", err)
-		return nil, 0, err
+		// 如果精确计数超时，使用估算
+		log.Printf("⚠️ 精确计数超时，使用估算: %v", err)
+		estimateQuery := fmt.Sprintf("SELECT round(count() * any(_sample_factor)) FROM dns_query_log SAMPLE 0.1 WHERE %s", whereClause)
+		err = s.conn.QueryRow(ctx, estimateQuery, args...).Scan(&total)
+		if err != nil {
+			log.Printf("❌ 估算总数也失败: %v", err)
+			// 如果估算也失败，设置一个默认值继续查询数据
+			total = 0
+		}
 	}
 
-	// 查询数据
+	// 优化数据查询 - 移除 FINAL 关键字
 	offset := (page - 1) * pageSize
-	dataQuery := fmt.Sprintf(
-		"SELECT timestamp, node_id, client_ip, domain, query_type, time_ms, speed_ms, result_count, result_ips, raw_log "+
-			"FROM dns_query_log WHERE %s ORDER BY timestamp DESC LIMIT %d OFFSET %d",
-		whereClause, pageSize, offset)
+
+	dataQuery := fmt.Sprintf(`
+        SELECT 
+            timestamp, 
+            node_id, 
+            client_ip, 
+            domain, 
+            query_type, 
+            time_ms, 
+            speed_ms, 
+            result_count, 
+            result_ips, 
+            raw_log
+        FROM dns_query_log 
+        WHERE %s 
+        ORDER BY timestamp DESC 
+        LIMIT %d OFFSET %d
+        SETTINGS max_execution_time = 25
+    `, whereClause, pageSize, offset)
 
 	rows, err := s.conn.Query(ctx, dataQuery, args...)
 	if err != nil {
@@ -96,6 +142,10 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 	defer rows.Close()
 
 	var logs []models.DNSLog
+
+	// 预分配切片容量
+	logs = make([]models.DNSLog, 0, pageSize)
+
 	for rows.Next() {
 		var logCK models.DNSLogCK
 		err := rows.Scan(
@@ -130,6 +180,12 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 			RawLog:    logCK.RawLog,
 		}
 		logs = append(logs, logEntry)
+	}
+
+	// 检查是否有行扫描错误
+	if rows.Err() != nil {
+		log.Printf("❌ 行迭代错误: %v", rows.Err())
+		return nil, 0, rows.Err()
 	}
 
 	log.Printf("✅ 成功查询 %d 条日志，总数: %d", len(logs), total)

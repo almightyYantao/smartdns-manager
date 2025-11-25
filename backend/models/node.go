@@ -37,6 +37,22 @@ type Node struct {
 	AgentVersion   string `json:"agent_version"`
 	DeployMode     string `json:"deploy_mode"`
 	AgentConfig    string `json:"agent_config" gorm:"type:text"`
+
+	ProxyConfig *ProxyConfig `json:"proxy_config" gorm:"type:json"`
+}
+
+type ProxyConfig struct {
+	Enabled   bool   `json:"enabled"`
+	ProxyType string `json:"proxy_type"` // "socks5", "http", "ssh"
+	ProxyHost string `json:"proxy_host"`
+	ProxyPort int    `json:"proxy_port"`
+	ProxyUser string `json:"proxy_user,omitempty"`
+	ProxyPass string `json:"proxy_pass,omitempty"`
+	// SSH跳板机配置
+	JumpHost     string `json:"jump_host,omitempty"`
+	JumpPort     int    `json:"jump_port,omitempty"`
+	JumpUser     string `json:"jump_user,omitempty"`
+	JumpPassword string `json:"jump_password,omitempty"`
 }
 
 // InitLog 初始化日志
