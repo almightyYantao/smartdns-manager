@@ -2,19 +2,54 @@ name: Build Docker Image
 on:
   push:
     tags:
-      - 'docker-v*'
+      - 'docker-patch'
+      - 'docker-minor'
+      - 'docker-major'
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   build-docker:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # 需要写权限来创建新标签
       packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史记录
+
+      - name: Generate version tag
+        id: version
+        run: |
+          # 获取所有 docker-v* 标签并排序
+          LATEST_TAG=$(git tag -l "docker-v*" | sort -V | tail -n1)
+          
+          if [ -z "$LATEST_TAG" ]; then
+            # 如果没有找到任何版本标签，从 v0.0.1 开始
+            NEW_VERSION="docker-v0.0.1"
+          else
+            # 提取版本号并递增
+            VERSION_NUM=$(echo $LATEST_TAG | sed 's/docker-v//')
+            IFS='.' read -r major minor patch <<< "$VERSION_NUM"
+            NEW_PATCH=$((patch + 1))
+            NEW_VERSION="docker-v${major}.${minor}.${NEW_PATCH}"
+          fi
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Generated new version: $NEW_VERSION"
+          
+          # 创建新的版本标签
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag $NEW_VERSION
+          git push origin $NEW_VERSION
+          
+          # 删除触发标签
+          git push origin :refs/tags/docker
 
       - name: Extract metadata
         id: meta
@@ -22,7 +57,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag,prefix={{version}},pattern=docker-v(.*)
+            type=raw,value=${{ steps.version.outputs.new_version }}
             type=raw,value=latest
           flavor: |
             latest=auto
@@ -49,6 +84,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.version.outputs.new_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

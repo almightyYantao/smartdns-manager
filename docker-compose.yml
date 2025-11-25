@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   smartdns-manager:
-    image: ghcr.nju.edu.cn/almightyyantao/smartdns-manager:main
+    image: ghcr.nju.edu.cn/almightyyantao/smartdns-manager:latest
     container_name: smartdns-manager
     restart: unless-stopped
     ports:
