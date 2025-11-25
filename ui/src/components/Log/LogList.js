@@ -13,12 +13,15 @@ import {
   Badge,
   Tooltip,
   Empty,
+  Switch,
 } from "antd";
 import {
   SearchOutlined,
   ReloadOutlined,
   ClearOutlined,
   ClockCircleOutlined,
+  SyncOutlined,
+  PauseOutlined,
 } from "@ant-design/icons";
 import { getDNSLogs } from "../../api";
 import moment from "moment";
@@ -29,6 +32,7 @@ const { Option } = Select;
 const LogList = ({ nodeId, nodeName }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false); // 自动刷新开关
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 20,
@@ -36,19 +40,49 @@ const LogList = ({ nodeId, nodeName }) => {
   });
   const [form] = Form.useForm();
 
+  // 定时器引用
+  const [intervalRef, setIntervalRef] = useState(null);
+
   useEffect(() => {
     loadLogs();
-    const interval = setInterval(() => {
-      loadLogs(true);
-    }, 30000);
-
-    return () => clearInterval(interval);
   }, [nodeId, pagination.current, pagination.pageSize]);
+
+  // 处理自动刷新开关
+  useEffect(() => {
+    if (autoRefresh) {
+      // 开启自动刷新
+      const interval = setInterval(() => {
+        loadLogs(true);
+      }, 30000); // 30秒刷新一次
+      setIntervalRef(interval);
+    } else {
+      // 关闭自动刷新
+      if (intervalRef) {
+        clearInterval(intervalRef);
+        setIntervalRef(null);
+      }
+    }
+
+    // 清理函数
+    return () => {
+      if (intervalRef) {
+        clearInterval(intervalRef);
+      }
+    };
+  }, [autoRefresh]);
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (intervalRef) {
+        clearInterval(intervalRef);
+      }
+    };
+  }, []);
 
   const loadLogs = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-
       const values = form.getFieldsValue();
       const params = {
         node_id: nodeId,
@@ -89,6 +123,11 @@ const LogList = ({ nodeId, nodeName }) => {
 
   const handleTableChange = (newPagination) => {
     setPagination(newPagination);
+  };
+
+  // 处理自动刷新开关变化
+  const handleAutoRefreshChange = (checked) => {
+    setAutoRefresh(checked);
   };
 
   const getQueryTypeTag = (type) => {
@@ -156,25 +195,25 @@ const LogList = ({ nodeId, nodeName }) => {
         </Tag>
       ),
     },
-      {
-          title: "速度检查",
-          dataIndex: "speed_ms",
-          key: "speed_ms",
-          width: 100,
-          align: "right",
-          render: (speed) => (
-              <span style={{ color: speed < 0 ? "#999" : "#52c41a" }}>
+    {
+      title: "速度检查",
+      dataIndex: "speed_ms",
+      key: "speed_ms",
+      width: 100,
+      align: "right",
+      render: (speed) => (
+        <span style={{ color: speed < 0 ? "#999" : "#52c41a" }}>
           {speed.toFixed(1)}ms
         </span>
-          ),
-      },
-      {
-          title: "所属上游",
-          dataIndex: "group",
-          key: "group",
-          width: 100,
-          align: "right"
-      },
+      ),
+    },
+    {
+      title: "所属上游",
+      dataIndex: "group",
+      key: "group",
+      width: 100,
+      align: "right",
+    },
     {
       title: "结果",
       dataIndex: "result",
@@ -270,6 +309,18 @@ const LogList = ({ nodeId, nodeName }) => {
               >
                 刷新
               </Button>
+              <Space>
+                <Switch
+                  checked={autoRefresh}
+                  onChange={handleAutoRefreshChange}
+                  checkedChildren={<SyncOutlined />}
+                  unCheckedChildren={<PauseOutlined />}
+                  size="small"
+                />
+                <span style={{ color: autoRefresh ? "#52c41a" : "#999" }}>
+                  {autoRefresh ? "自动刷新已开启" : "自动刷新已关闭"}
+                </span>
+              </Space>
               <span style={{ color: "#999", marginLeft: 8 }}>
                 共 {pagination.total} 条记录
               </span>

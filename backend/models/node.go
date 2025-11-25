@@ -15,7 +15,7 @@ type Node struct {
 	Password             string                `json:"password,omitempty"`
 	PrivateKey           string                `json:"private_key,omitempty"`
 	ConfigPath           string                `json:"config_path" gorm:"default:/etc/smartdns/smartdns.conf"`
-	LogPath              string                `json:"log_path" gorm:"default:/var/log/audit/audit.log"`
+	LogPath              string                `json:"log_path" gorm:"default:/var/log/smartdns/audit.log"`
 	LogMonitorEnabled    bool                  `json:"log_monitor_enabled" gorm:"default:false"`
 	Status               string                `json:"status" gorm:"default:unknown"`      // online, offline, error
 	InitStatus           string                `json:"init_status" gorm:"default:unknown"` // unknown, not_installed, installed, initializing, failed

@@ -185,6 +185,10 @@ func GetNodeLogMonitorStatus(c *gin.Context) {
 		return
 	}
 
+	// 更新节点 Agent 状态
+	database.DB.Model(&node).Updates(map[string]interface{}{
+		"agent_installed": true,
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{

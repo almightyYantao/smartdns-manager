@@ -40,14 +40,9 @@ func InitClickHouse() {
 
 	// 测试连接
 	ctx := context.Background()
-	if err := conn.Ping(ctx); err != nil {
-		log.Fatal("❌ Ping ClickHouse 失败:", err)
-	}
 	log.Println("✅ ClickHouse 连接成功")
-
 	// 关闭初始连接
 	conn.Close()
-
 	CHConn, err = clickhouse.Open(&clickhouse.Options{
 		Addr: []string{fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)},
 		Auth: clickhouse.Auth{
@@ -63,81 +58,22 @@ func InitClickHouse() {
 		MaxIdleConns:    10,
 		ConnMaxLifetime: time.Hour,
 	})
-	if err != nil {
-		log.Fatal("❌ 连接数据库失败:", err)
-	}
-
-	if err := createTablesIfNotExists(ctx, CHConn); err != nil {
+	// 执行迁移替代原来的 createTablesIfNotExists
+	if err := runMigrations(ctx, CHConn); err != nil {
 		CHConn.Close()
-		log.Fatal("❌ 创建表失败:", err)
+		log.Fatal("❌ 数据库迁移失败:", err)
 	}
 
-	log.Printf("✅ ClickHouse 初始化完成 - 数据库: %s", cfg.Database)
-}
-
-// createTablesIfNotExists 创建表结构
-func createTablesIfNotExists(ctx context.Context, conn driver.Conn) error {
-	log.Println("📋 开始创建表结构...")
-
-	// 1. 创建主表
-	if err := createMainTable(ctx, conn); err != nil {
-		return err
-	}
-
-	// 2. 创建索引
-	if err := createIndexes(ctx, conn); err != nil {
+	// 创建索引和视图
+	if err := createIndexes(ctx, CHConn); err != nil {
 		log.Printf("⚠️ 创建索引失败: %v", err)
 	}
 
-	// 3. 创建物化视图（可选，用于加速查询）
-	if err := createMaterializedViews(ctx, conn); err != nil {
+	if err := createMaterializedViews(ctx, CHConn); err != nil {
 		log.Printf("⚠️ 创建物化视图失败（可忽略）: %v", err)
 	}
 
-	log.Println("✅ 表结构创建完成")
-	return nil
-}
-
-// createMainTable 创建主表
-func createMainTable(ctx context.Context, conn driver.Conn) error {
-	log.Println("🔨 创建 dns_query_log 表...")
-
-	createTableSQL := `
-    CREATE TABLE IF NOT EXISTS dns_query_log (
-        timestamp DateTime64(3) COMMENT '查询时间（毫秒精度）',
-        date Date DEFAULT toDate(timestamp) COMMENT '日期（用于分区）',
-        node_id UInt32 COMMENT '节点ID',
-        client_ip String COMMENT '客户端IP',
-        domain String COMMENT '查询域名',
-        query_type UInt16 COMMENT '查询类型（1=A, 28=AAAA, 65=HTTPS等）',
-        time_ms UInt32 COMMENT '查询耗时（毫秒）',
-        speed_ms Float32 COMMENT '速度检查耗时（毫秒）',
-        result_count UInt8 COMMENT '返回IP数量',
-        result_ips Array(String) COMMENT '返回的IP列表',
-        raw_log String COMMENT '原始日志',
-        group String COMMENT '所属组'
-    ) ENGINE = MergeTree()
-    PARTITION BY toYYYYMM(date)
-    PRIMARY KEY (date, node_id)
-    ORDER BY (date, node_id, timestamp, client_ip)
-    TTL date + INTERVAL 90 DAY
-    SETTINGS 
-        index_granularity = 8192,
-        merge_with_ttl_timeout = 86400,
-        max_parts_in_total = 100000,
-        parts_to_delay_insert = 150,
-        parts_to_throw_insert = 300,
-        max_compress_block_size = 1048576,
-        min_compress_block_size = 65536
-    COMMENT 'DNS查询日志表 - 大数据量优化版本'
-    `
-
-	if err := conn.Exec(ctx, createTableSQL); err != nil {
-		return fmt.Errorf("创建主表失败: %w", err)
-	}
-
-	log.Println("✅ dns_query_log 表创建成功")
-	return nil
+	log.Printf("✅ ClickHouse 初始化完成 - 数据库: %s", cfg.Database)
 }
 
 // createIndexes 创建索引
@@ -292,140 +228,4 @@ func createMaterializedViews(ctx context.Context, conn driver.Conn) error {
 	}
 
 	return nil
-}
-
-// OptimizeTable
-func OptimizeTable() error {
-	if CHConn == nil {
-		return fmt.Errorf("ClickHouse 连接未初始化")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	log.Println("🔧 开始优化表...")
-
-	// 优化主表
-	if err := CHConn.Exec(ctx, "OPTIMIZE TABLE dns_query_log FINAL"); err != nil {
-		log.Printf("⚠️ 优化主表失败: %v", err)
-		return err
-	}
-
-	// 优化物化视图
-	views := []string{
-		"dns_stats_hourly",
-		"dns_top_domains",
-		"dns_client_stats",
-		"dns_daily_summary",
-	}
-
-	for _, view := range views {
-		if err := CHConn.Exec(ctx, fmt.Sprintf("OPTIMIZE TABLE %s FINAL", view)); err != nil {
-			log.Printf("⚠️ 优化视图 %s 失败: %v", view, err)
-		}
-	}
-
-	log.Println("✅ 表优化完成")
-	return nil
-}
-
-// GetTableStats 获取表统计信息
-func GetTableStats() (map[string]interface{}, error) {
-	if CHConn == nil {
-		return nil, fmt.Errorf("ClickHouse 连接未初始化")
-	}
-
-	ctx := context.Background()
-	stats := make(map[string]interface{})
-
-	// 获取主表统计
-	var totalRows, totalSize uint64
-	err := CHConn.QueryRow(ctx, `
-        SELECT 
-            sum(rows) as total_rows,
-            sum(bytes_on_disk) as total_size
-        FROM system.parts 
-        WHERE table = 'dns_query_log' AND active =1
-    `).Scan(&totalRows, &totalSize)
-
-	if err != nil {
-		return nil, err
-	}
-
-	stats["total_rows"] = totalRows
-	stats["total_size_bytes"] = totalSize
-	stats["total_size_mb"] = float64(totalSize) / 1024 / 1024
-
-	// 获取分区信息
-	var partitions uint64
-	err = CHConn.QueryRow(ctx, `
-        SELECT count(DISTINCT partition) 
-        FROM system.parts 
-        WHERE table = 'dns_query_log' AND active = 1
-    `).Scan(&partitions)
-
-	if err == nil {
-		stats["partitions"] = partitions
-	}
-
-	return stats, nil
-}
-
-// CleanOldPartitions
-func CleanOldPartitions(daysToKeep int) error {
-	if CHConn == nil {
-		return fmt.Errorf("ClickHouse 连接未初始化")
-	}
-
-	ctx := context.Background()
-
-	// 计算要删除的分区
-	cutoffDate := time.Now().AddDate(0, 0, -daysToKeep).Format("2006-01")
-
-	log.Printf("🗑️ 清理 %s 之前的分区...", cutoffDate)
-
-	sql := fmt.Sprintf("ALTER TABLE dns_query_log DROP PARTITION '%s'", cutoffDate)
-	if err := CHConn.Exec(ctx, sql); err != nil {
-		return fmt.Errorf("清理分区失败: %w", err)
-	}
-
-	log.Println("✅ 旧分区清理完成")
-	return nil
-}
-
-func CloseClickHouse() {
-	if CHConn != nil {
-		CHConn.Close()
-		log.Println("✅ ClickHouse 连接已关闭")
-	}
-}
-
-func CheckClickHouseHealth() error {
-	if CHConn == nil {
-		return fmt.Errorf("ClickHouse 连接未初始化")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := CHConn.Ping(ctx); err != nil {
-		return fmt.Errorf("ClickHouse 健康检查失败: %w", err)
-	}
-
-	return nil
-}
-
-func GetClickHouseVersion() (string, error) {
-	if CHConn == nil {
-		return "", fmt.Errorf("ClickHouse 连接未初始化")
-	}
-
-	ctx := context.Background()
-	var version string
-	err := CHConn.QueryRow(ctx, "SELECT version()").Scan(&version)
-	if err != nil {
-		return "", err
-	}
-
-	return version, nil
 }

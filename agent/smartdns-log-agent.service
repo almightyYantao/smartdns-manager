@@ -11,7 +11,7 @@ ExecStart=/usr/local/bin/smartdns-log-agent
 Restart=always
 RestartSec=5
 Environment=NODE_ID=1
-Environment=LOG_FILE=/var/log/audit/audit.log
+Environment=LOG_FILE=/var/log/smartdns/audit.log
 Environment=CLICKHOUSE_HOST=localhost
 Environment=CLICKHOUSE_PORT=9000
 Environment=CLICKHOUSE_DB=smartdns_logs

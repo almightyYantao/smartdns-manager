@@ -62,7 +62,7 @@ func AddNode(c *gin.Context) {
 		node.ConfigPath = "/etc/smartdns/smartdns.conf"
 	}
 	if node.LogPath == "" {
-		node.LogPath = "/var/log/audit/audit.log"
+		node.LogPath = "/var/log/smartdns/audit.log"
 	}
 	node.Status = "unknown"
 	node.LogMonitorEnabled = false

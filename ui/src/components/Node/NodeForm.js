@@ -128,7 +128,7 @@ const NodeForm = ({ node, onSuccess, onCancel }) => {
         rules={[{ required: true, message: '请输入日志文件路径' }]}
         extra="SmartDNS 日志文件的完整路径，用于日志监控功能"
       >
-        <Input placeholder="/var/log/audit/audit.log" />
+        <Input placeholder="/var/log/smartdns/audit.log" />
       </Form.Item>
 
       <Divider orientation="left">其他信息</Divider>

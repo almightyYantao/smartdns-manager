@@ -66,7 +66,7 @@ sudo ./install.sh \
   --mode systemd \
   --node-id 1 \
   --node-name "主节点" \
-  --log-file "/var/log/audit/audit.log" \
+  --log-file "/var/log/smartdns/audit.log" \
   --clickhouse-host "192.168.1.100" \
   --clickhouse-user "smartdns" \
   --clickhouse-db "smartdns_logs" \
@@ -109,7 +109,7 @@ tar -xzf smartdns-log-agent-linux-amd64.tar.gz
 ```bash
 export NODE_ID=1
 export NODE_NAME="node-1"
-export LOG_FILE="/var/log/audit/audit.log"
+export LOG_FILE="/var/log/smartdns/audit.log"
 export CLICKHOUSE_HOST="192.168.1.100"
 export CLICKHOUSE_PORT=9000
 export CLICKHOUSE_DB="smartdns_logs"
@@ -131,7 +131,7 @@ sudo ./smartdns-log-agent-linux-amd64
 |--------|--------|------|
 | `NODE_ID` | - | 节点ID（必需） |
 | `NODE_NAME` | `node-{id}` | 节点名称 |
-| `LOG_FILE` | `/var/log/audit/audit.log` | SmartDNS 日志文件路径 |
+| `LOG_FILE` | `/var/log/smartdns/audit.log` | SmartDNS 日志文件路径 |
 | `BATCH_SIZE` | `1000` | 批量插入大小 |
 | `FLUSH_INTERVAL_SEC` | `2` | 刷新间隔（秒） |
 | `CLICKHOUSE_HOST` | - | ClickHouse 主机地址（必需） |
@@ -249,10 +249,10 @@ SET max_memory_usage = 10000000000;
 1. **日志文件权限问题**
 ```bash
 # 检查文件权限
-ls -la /var/log/audit/audit.log
+ls -la /var/log/smartdns/audit.log
 
 # 如果需要，调整权限
-sudo chmod 644 /var/log/audit/audit.log
+sudo chmod 644 /var/log/smartdns/audit.log
 ```
 
 2. **ClickHouse 连接失败**

@@ -42,7 +42,7 @@ print_help() {
   -d, --clickhouse-db DB        数据库名 (默认: smartdns_logs)
   -u, --clickhouse-user USER    用户名 (默认: default)
   -p, --clickhouse-password PWD 密码
-  -l, --log-file PATH     日志文件路径 (默认: /var/log/audit/audit.log)
+  -l, --log-file PATH     日志文件路径 (默认: /var/log/smartdns/audit.log)
   -m, --mode MODE         部署模式: systemd|docker (默认: systemd)
   --proxy URL             代理地址 (格式: socks5://host:port 或 http://user:pass@host:port)
   --uninstall             卸载 Agent
@@ -512,7 +512,7 @@ NODE_NAME=${NODE_NAME:-"node-$NODE_ID"}
 CLICKHOUSE_PORT=${CLICKHOUSE_PORT:-9000}
 CLICKHOUSE_DB=${CLICKHOUSE_DB:-"smartdns_logs"}
 CLICKHOUSE_USER=${CLICKHOUSE_USER:-"default"}
-LOG_FILE=${LOG_FILE:-"/var/log/audit/audit.log"}
+LOG_FILE=${LOG_FILE:-"/var/log/smartdns/audit.log"}
 DEPLOY_MODE=${DEPLOY_MODE:-"systemd"}
 
 # 主安装流程

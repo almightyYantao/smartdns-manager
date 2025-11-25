@@ -65,7 +65,7 @@ func DeployAgent(c *gin.Context) {
 		req.ClickHouseUser = "default"
 	}
 	if req.LogFilePath == "" {
-		req.LogFilePath = "/var/log/audit/audit.log"
+		req.LogFilePath = "/var/log/smartdns/audit.log"
 	}
 	if req.BatchSize == 0 {
 		req.BatchSize = 1000
@@ -129,6 +129,18 @@ func CheckAgentStatus(c *gin.Context) {
 			"message": "检查状态失败: " + err.Error(),
 		})
 		return
+	}
+
+	if status.Installed == true {
+		database.DB.Model(&node).Updates(map[string]interface{}{
+			"agent_installed": true,
+		})
+	}
+
+	if status.Running == true {
+		database.DB.Model(&node).Updates(map[string]interface{}{
+			"log_monitor_enabled": true,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{

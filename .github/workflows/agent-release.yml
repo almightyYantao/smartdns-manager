@@ -375,7 +375,7 @@ jobs:
             -d smartdns_logs \\
             -u default \\
             -p "your_password" \\
-            -l /var/log/audit/audit.log \\
+            -l /var/log/smartdns/audit.log \\
             -m systemd
           \`\`\`
           ### 📋 参数说明
@@ -388,7 +388,7 @@ jobs:
           | \`--clickhouse-db\` | \`-d\` | 数据库名 | ❌ | smartdns_logs |
           | \`--clickhouse-user\` | \`-u\` | 用户名 | ❌ | default |
           | \`--clickhouse-password\` | \`-p\` | 密码 | ❌ | - |
-          | \`--log-file\` | \`-l\` | 日志文件路径 | ❌ | /var/log/audit/audit.log |
+          | \`--log-file\` | \`-l\` | 日志文件路径 | ❌ | /var/log/smartdns/audit.log |
           | \`--mode\` | \`-m\` | 部署模式 (systemd/docker) | ❌ | systemd |
           | \`--uninstall\` | - | 卸载服务 | - | - |
           | \`--help\` | \`-h\` | 显示帮助 | - | - |

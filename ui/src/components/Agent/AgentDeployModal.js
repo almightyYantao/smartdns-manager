@@ -50,7 +50,7 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
         clickhouse_port: 9000,
         clickhouse_db: "smartdns_logs",
         clickhouse_user: "default",
-        log_file_path: "/var/log/audit/audit.log",
+        log_file_path: "/var/log/smartdns/audit.log",
         batch_size: 1000,
         flush_interval: 2,
         proxy_type: "socks5",

@@ -81,6 +81,7 @@ func (p *LogParser) parseWithGroup(matches []string, nodeID uint32, line string)
 		ResultCount: uint8(len(resultIPs)),
 		ResultIPs:   resultIPs,
 		RawLog:      line,
+		Group:       strings.TrimSpace(matches[7]),
 	}
 }
 
