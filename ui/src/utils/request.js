@@ -3,7 +3,7 @@ import { message } from 'antd';
 
 const request = axios.create({
   baseURL: process.env.REACT_APP_API_BASE_URL || '/api',
-  timeout: 30000,
+  timeout: 300000,
 });
 
 // 请求拦截器

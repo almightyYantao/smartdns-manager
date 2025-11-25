@@ -180,34 +180,36 @@ const AgentStatus = ({ node, onRefresh }) => {
         <Divider style={{ margin: "12px 0" }} />
 
         <Space wrap>
-          {!status?.installed ? (
-            <Button
-              type="primary"
-              size="small"
-              icon={<CloudDownloadOutlined />}
-              onClick={() => setDeployModalVisible(true)}
-            >
-              部署 Agent
-            </Button>
-          ) : (
-            <>
+          {status ? (
+            !status?.installed ? (
               <Button
+                type="primary"
                 size="small"
-                icon={<EyeOutlined />}
-                onClick={() => setLogsModalVisible(true)}
+                icon={<CloudDownloadOutlined />}
+                onClick={() => setDeployModalVisible(true)}
               >
-                查看日志
+                部署 Agent
               </Button>
-              <Button
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={handleUninstall}
-              >
-                卸载
-              </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => setLogsModalVisible(true)}
+                >
+                  查看日志
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={handleUninstall}
+                >
+                  卸载
+                </Button>
+              </>
+            )
+          ) : null}
         </Space>
       </Space>
 

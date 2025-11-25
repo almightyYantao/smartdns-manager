@@ -21,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const Version = "1.0.0"
+const Version = "0.0.3"
 
 type AgentServer struct {
 	cfg        *config.Config

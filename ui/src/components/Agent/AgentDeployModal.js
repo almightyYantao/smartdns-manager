@@ -13,6 +13,7 @@ import {
   Space,
   Divider,
   InputNumber,
+  Checkbox,
 } from "antd";
 import {
   CloudDownloadOutlined,
@@ -33,6 +34,7 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
   const [deployOutput, setDeployOutput] = useState([]);
+  const [useProxy, setUseProxy] = useState(false);
 
   useEffect(() => {
     if (visible && node) {
@@ -40,7 +42,8 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
       setCurrentStep(0);
       setDeployResult(null);
       setDeployOutput([]);
-
+      setUseProxy(false);
+      
       // 设置默认值
       form.setFieldsValue({
         deploy_mode: "systemd",
@@ -50,6 +53,8 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
         log_file_path: "/var/log/audit/audit.log",
         batch_size: 1000,
         flush_interval: 2,
+        proxy_type: "socks5",
+        proxy_port: 1080,
       });
     }
   }, [visible, node, form]);
@@ -65,9 +70,17 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
         ...values,
       };
 
+      // 如果不使用代理，清除代理相关字段
+      if (!useProxy) {
+        delete deployData.proxy_type;
+        delete deployData.proxy_host;
+        delete deployData.proxy_port;
+        delete deployData.proxy_user;
+        delete deployData.proxy_pass;
+      }
+
       // 使用 API 方法替代 fetch
       const result = await deployAgent(deployData);
-
       if (result.success) {
         setDeployResult(result.data);
         setDeployOutput(result.data.output || []);
@@ -126,7 +139,6 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
             showIcon
             style={{ marginBottom: 16 }}
           />
-
           <Form form={form} layout="vertical">
             <Form.Item
               name="deploy_mode"
@@ -139,8 +151,67 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
               </Select>
             </Form.Item>
 
-            <Divider orientation="left">ClickHouse 配置</Divider>
+            <Divider orientation="left">代理配置</Divider>
+            <Form.Item>
+              <Checkbox
+                checked={useProxy}
+                onChange={(e) => setUseProxy(e.target.checked)}
+              >
+                使用 SOCKS5 代理连接
+              </Checkbox>
+            </Form.Item>
 
+            {useProxy && (
+              <>
+                <Alert
+                  message="代理说明"
+                  description="如果目标节点需要通过代理访问，请配置SOCKS5代理信息"
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+                
+                <Form.Item
+                  name="proxy_host"
+                  label="代理主机"
+                  rules={useProxy ? [{ required: true, message: "请输入代理主机地址" }] : []}
+                >
+                  <Input placeholder="例如: 127.0.0.1 或 proxy.company.com" />
+                </Form.Item>
+
+                <Space.Compact style={{ width: "100%" }}>
+                  <Form.Item
+                    name="proxy_port"
+                    label="代理端口"
+                    style={{ width: "30%" }}
+                    rules={useProxy ? [{ required: true, message: "请输入代理端口" }] : []}
+                  >
+                    <InputNumber 
+                      min={1} 
+                      max={65535} 
+                      style={{ width: "100%" }} 
+                      placeholder="1080"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="proxy_user"
+                    label="代理用户名"
+                    style={{ width: "35%", marginLeft: 8 }}
+                  >
+                    <Input placeholder="用户名（可选）" />
+                  </Form.Item>
+                  <Form.Item
+                    name="proxy_pass"
+                    label="代理密码"
+                    style={{ width: "35%", marginLeft: 8 }}
+                  >
+                    <Input.Password placeholder="密码（可选）" />
+                  </Form.Item>
+                </Space.Compact>
+              </>
+            )}
+
+            <Divider orientation="left">ClickHouse 配置</Divider>
             <Form.Item
               name="clickhouse_host"
               label="ClickHouse 主机"
@@ -180,13 +251,12 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
             </Form.Item>
 
             <Divider orientation="left">Agent 配置</Divider>
-
             <Form.Item
               name="log_file_path"
               label="日志文件路径"
               rules={[{ required: true, message: "请输入日志文件路径" }]}
             >
-              <Input placeholder="/var/log/audit/audit.log" />
+              <Input placeholder="/var/log/smartdns/audit.log" />
             </Form.Item>
 
             <Space.Compact style={{ width: "100%" }}>
@@ -225,6 +295,12 @@ const AgentDeployModal = ({ visible, onCancel, node, onSuccess }) => {
           <div style={{ marginTop: 16 }}>
             <Text>正在部署 Agent 到节点 {node?.name}</Text>
             <br />
+            {useProxy && (
+              <>
+                <Text type="secondary">通过 SOCKS5 代理连接中...</Text>
+                <br />
+              </>
+            )}
             <Text type="secondary">这可能需要几分钟时间，请耐心等待...</Text>
           </div>
         </div>
