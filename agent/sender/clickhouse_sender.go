@@ -69,7 +69,8 @@ func (s *ClickHouseSender) createTables(ctx context.Context) error {
         speed_ms Float32 COMMENT '速度检查耗时（毫秒）',
         result_count UInt8 COMMENT '返回IP数量',
         result_ips Array(String) COMMENT '返回的IP列表',
-        raw_log String COMMENT '原始日志'
+        raw_log String COMMENT '原始日志',
+        group String COMMENT '所属组'
     ) ENGINE = MergeTree()
     PARTITION BY toYYYYMM(date)
     ORDER BY (date, node_id, timestamp)
@@ -231,7 +232,7 @@ func (s *ClickHouseSender) SendBatch(records []models.DNSLogRecord) error {
 	batch, err := s.conn.PrepareBatch(ctx,
 		`INSERT INTO dns_query_log (
             timestamp, date, node_id, client_ip, domain, query_type, 
-            time_ms, speed_ms, result_count, result_ips, raw_log
+            time_ms, speed_ms, result_count, result_ips, raw_log, group
         )`)
 	if err != nil {
 		return err
@@ -250,6 +251,7 @@ func (s *ClickHouseSender) SendBatch(records []models.DNSLogRecord) error {
 			record.ResultCount,
 			record.ResultIPs,
 			record.RawLog,
+			record.Group,
 		)
 		if err != nil {
 			return err

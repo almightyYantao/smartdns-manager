@@ -126,7 +126,8 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
             speed_ms, 
             result_count, 
             result_ips, 
-            raw_log
+            raw_log,
+            group
         FROM dns_query_log 
         WHERE %s 
         ORDER BY timestamp DESC 
@@ -159,6 +160,7 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 			&logCK.ResultCount,
 			&logCK.ResultIPs,
 			&logCK.RawLog,
+			&logCK.Group,
 		)
 		if err != nil {
 			log.Printf("⚠️ 扫描行失败: %v", err)
@@ -178,6 +180,7 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 			ResultIPs: strings.Join(logCK.ResultIPs, ","),
 			IPCount:   int(logCK.ResultCount),
 			RawLog:    logCK.RawLog,
+			Group:     logCK.Group,
 		}
 		logs = append(logs, logEntry)
 	}

@@ -114,7 +114,8 @@ func createMainTable(ctx context.Context, conn driver.Conn) error {
         speed_ms Float32 COMMENT '速度检查耗时（毫秒）',
         result_count UInt8 COMMENT '返回IP数量',
         result_ips Array(String) COMMENT '返回的IP列表',
-        raw_log String COMMENT '原始日志'
+        raw_log String COMMENT '原始日志',
+        group String COMMENT '所属组'
     ) ENGINE = MergeTree()
     PARTITION BY toYYYYMM(date)
     PRIMARY KEY (date, node_id)

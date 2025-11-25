@@ -156,18 +156,25 @@ const LogList = ({ nodeId, nodeName }) => {
         </Tag>
       ),
     },
-    {
-      title: "速度检查",
-      dataIndex: "speed_ms",
-      key: "speed_ms",
-      width: 100,
-      align: "right",
-      render: (speed) => (
-        <span style={{ color: speed < 0 ? "#999" : "#52c41a" }}>
+      {
+          title: "速度检查",
+          dataIndex: "speed_ms",
+          key: "speed_ms",
+          width: 100,
+          align: "right",
+          render: (speed) => (
+              <span style={{ color: speed < 0 ? "#999" : "#52c41a" }}>
           {speed.toFixed(1)}ms
         </span>
-      ),
-    },
+          ),
+      },
+      {
+          title: "所属上游",
+          dataIndex: "group",
+          key: "group",
+          width: 100,
+          align: "right"
+      },
     {
       title: "结果",
       dataIndex: "result",

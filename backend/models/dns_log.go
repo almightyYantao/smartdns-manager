@@ -18,6 +18,7 @@ type DNSLog struct {
 	ResultIPs string    `json:"result_ips" gorm:"type:text"`
 	IPCount   int       `json:"ip_count"`
 	RawLog    string    `json:"raw_log" gorm:"type:text"`
+	Group     string    `json:"group" gorm:"text"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -38,6 +39,7 @@ type DNSLogCK struct {
 	ResultCount uint8     `json:"result_count"`
 	ResultIPs   []string  `json:"result_ips"`
 	RawLog      string    `json:"raw_log"`
+	Group       string    `json:"group"`
 }
 
 // DNSLogStats 统计信息（通用）

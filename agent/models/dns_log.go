@@ -12,6 +12,7 @@ type DNSLogRecord struct {
 	ClientIP    string    `json:"client_ip"`
 	Domain      string    `json:"domain"`
 	QueryType   uint16    `json:"query_type"`
+	Group       string    `json:"group"`
 	TimeMs      uint32    `json:"time_ms"`
 	SpeedMs     float32   `json:"speed_ms"`
 	ResultCount uint8     `json:"result_count"`
