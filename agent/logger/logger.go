@@ -16,6 +16,7 @@ type Logger struct {
 	maxDays     int
 	file        *os.File
 	currentDate string
+	multiWriter io.Writer
 }
 
 func NewLogger(logDir string, maxDays int) (*Logger, error) {
@@ -35,7 +36,8 @@ func NewLogger(logDir string, maxDays int) (*Logger, error) {
 	}
 
 	// 设置标准日志输出
-	log.SetOutput(io.MultiWriter(os.Stdout, logger.file))
+	logger.multiWriter = io.MultiWriter(os.Stdout, logger.file)
+	log.SetOutput(logger.multiWriter)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
 	// 启动清理协程
@@ -67,23 +69,29 @@ func (l *Logger) rotateLog() error {
 	l.file = file
 	l.currentDate = today
 
+	// 重新设置日志输出，确保使用新的文件句柄
+	l.multiWriter = io.MultiWriter(os.Stdout, l.file)
+	log.SetOutput(l.multiWriter)
+
 	log.Printf("📁 日志文件轮转: %s", logFile)
 	return nil
 }
 
 func (l *Logger) cleanupLoop() {
-	// 每小时检查一次
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
+	// 每分钟检查一次轮转，每小时清理一次过期文件
+	rotateTicker := time.NewTicker(1 * time.Minute)
+	cleanupTicker := time.NewTicker(1 * time.Hour)
+	defer rotateTicker.Stop()
+	defer cleanupTicker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-rotateTicker.C:
+			// 检查是否需要轮转日志
+			l.rotateLog()
+		case <-cleanupTicker.C:
+			// 清理过期日志文件
 			l.cleanup()
-			// 每天0点轮转日志
-			if time.Now().Hour() == 0 {
-				l.rotateLog()
-			}
 		}
 	}
 }
@@ -156,6 +164,11 @@ func (l *Logger) GetRecentLogs(lines int) ([]string, error) {
 	// 读取最新的日志文件
 	latestFile := files[0]
 	return readLastLines(latestFile, lines)
+}
+
+// CheckRotate 手动检查并执行日志轮转（可选，用于在写入日志前检查）
+func (l *Logger) CheckRotate() error {
+	return l.rotateLog()
 }
 
 func (l *Logger) Close() error {
