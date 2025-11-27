@@ -16,8 +16,10 @@ import {
   LockOutlined,
   SettingOutlined,
   BellOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { getUserInfo } from '../utils/auth';
+import DatabaseBackupManager from '../components/Backup/DatabaseBackupManager';
 
 const Settings = () => {
   const [form] = Form.useForm();
@@ -149,12 +151,16 @@ const Settings = () => {
             <strong>关于系统</strong>
           </div>
           <Space direction="vertical">
-            <div>作者: Almighty.YanTao</div>
+            <div>作者: Almighty.Yantao</div>
             <div>GitHub: https://github.com/almightyYantao/smartdns-manager</div>
           </Space>
         </div>
       </Space>
     </Card>
+  );
+
+  const backupTab = (
+    <DatabaseBackupManager />
   );
 
   return (
@@ -180,6 +186,16 @@ const Settings = () => {
               </span>
             ),
             children: securityTab,
+          },
+          {
+            key: 'backup',
+            label: (
+              <span>
+                <DatabaseOutlined />
+                数据库备份
+              </span>
+            ),
+            children: backupTab,
           },
           {
             key: 'system',

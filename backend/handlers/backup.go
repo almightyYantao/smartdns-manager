@@ -18,8 +18,9 @@ import (
 )
 
 type BackupHandler struct {
-	db             *gorm.DB
+	db            *gorm.DB
 	storageManager *services.BackupStorageManager
+	backupService *services.BackupService
 }
 
 var (
@@ -68,6 +69,7 @@ func NewBackupHandler(db *gorm.DB) *BackupHandler {
 	return &BackupHandler{
 		db:             db,
 		storageManager: services.NewBackupStorageManager(),
+		backupService:  services.NewBackupService(),
 	}
 }
 
@@ -185,60 +187,23 @@ func (h *BackupHandler) performBackup(
 	tags string,
 	isAuto bool,
 ) (*models.Backup, error) {
-	// 生成备份文件名
-	timestamp := time.Now().Format("20060102_150405")
-	filename := fmt.Sprintf("smartdns_%s.conf", timestamp)
-
-	// 创建 SSH 客户端读取配置
-	sshClient, err := services.NewSSHClient(node)
+	// 使用通用备份服务
+	backup, err := h.backupService.PerformNodeBackup(ctx, node, storage, storageType, comment, tags, isAuto)
 	if err != nil {
-		return nil, fmt.Errorf("创建SSH连接失败: %w", err)
-	}
-	defer sshClient.Close()
-
-	// 读取配置文件内容
-	configContent, err := sshClient.ExecuteCommand("sudo cat /etc/smartdns/smartdns.conf")
-	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, err
 	}
 
-	// 保存到存储
-	storagePath, err := storage.Save(ctx, []byte(configContent), filename)
-	if err != nil {
-		return nil, fmt.Errorf("保存备份失败: %w", err)
-	}
-
-	// 创建备份记录
-	backup := &models.Backup{
-		NodeID:      node.ID,
-		Name:        filename,
-		Path:        storagePath,
-		Size:        int64(len(configContent)),
-		IsAuto:      isAuto,
-		Comment:     comment,
-		Tags:        tags,
-		StorageType: storageType,
-		IsDeleted:   false,
-	}
-
-	// S3 存储的额外信息
+	// S3 存储的额外信息（Handler 特有逻辑）
 	if storageType == "s3" {
 		cfg := h.storageManager.GetConfig()
 		backup.S3Bucket = cfg["s3_bucket"].(string)
-		backup.S3Key = storagePath
 		backup.S3Region = cfg["s3_region"].(string)
-
-		// 生成下载 URL（24小时有效）
-		downloadURL, err := storage.GetDownloadURL(ctx, storagePath, 24*time.Hour)
-		if err == nil {
-			backup.DownloadURL = downloadURL
-		}
 	}
 
 	// 保存到数据库
 	if err := h.db.Create(backup).Error; err != nil {
 		// 尝试清理已上传的文件
-		storage.Delete(ctx, storagePath)
+		storage.Delete(ctx, backup.Path)
 		return nil, fmt.Errorf("保存备份记录失败: %w", err)
 	}
 

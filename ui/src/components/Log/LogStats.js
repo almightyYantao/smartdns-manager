@@ -18,7 +18,7 @@ import {
   ClockCircleOutlined,
 } from '@ant-design/icons';
 import { getNodeLogStats } from '../../api';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
 
@@ -26,8 +26,8 @@ const LogStats = ({ nodeId }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [timeRange, setTimeRange] = useState([
-    moment().subtract(24, 'hours'),
-    moment(),
+    dayjs().subtract(24, 'hours'),
+    dayjs(),
   ]);
 
   useEffect(() => {

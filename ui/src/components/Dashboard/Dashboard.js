@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Row,
   Col,
@@ -11,26 +11,22 @@ import {
   Spin,
   Empty,
   Timeline,
-} from 'antd';
+} from "antd";
 import {
   CloudServerOutlined,
   GlobalOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  WarningOutlined,
   SettingOutlined,
-} from '@ant-design/icons';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
-import { getDashboardStats, getNodesHealth } from '../../api';
-import moment from 'moment';
+} from "@ant-design/icons";
+import { getDashboardStats, getNodesHealth } from "../../api";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import "dayjs/locale/zh-cn"; // 中文语言包
+
+// 扩展 dayjs 插件
+dayjs.extend(relativeTime);
+dayjs.locale("zh-cn"); // 设置中文
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
@@ -53,7 +49,7 @@ const Dashboard = () => {
       setStats(statsRes.data);
       setHealth(healthRes.data);
     } catch (error) {
-      console.error('加载数据失败', error);
+      console.error("加载数据失败", error);
     } finally {
       setLoading(false);
     }
@@ -61,7 +57,7 @@ const Dashboard = () => {
 
   if (loading && !stats) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0' }}>
+      <div style={{ textAlign: "center", padding: "100px 0" }}>
         <Spin size="large" />
       </div>
     );
@@ -73,37 +69,37 @@ const Dashboard = () => {
 
   const nodeHealthColumns = [
     {
-      title: '节点名称',
-      dataIndex: 'node_name',
-      key: 'node_name',
+      title: "节点名称",
+      dataIndex: "node_name",
+      key: "node_name",
       render: (text, record) => (
         <Space>
-          {record.status === 'online' ? (
-            <CheckCircleOutlined style={{ color: '#52c41a' }} />
+          {record.status === "online" ? (
+            <CheckCircleOutlined style={{ color: "#52c41a" }} />
           ) : (
-            <CloseCircleOutlined style={{ color: '#f5222d' }} />
+            <CloseCircleOutlined style={{ color: "#f5222d" }} />
           )}
           <span>{text}</span>
         </Space>
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       render: (status) => {
         const colors = {
-          online: 'success',
-          offline: 'error',
-          error: 'warning',
+          online: "success",
+          offline: "error",
+          error: "warning",
         };
         return <Tag color={colors[status]}>{status}</Tag>;
       },
     },
     {
-      title: 'CPU',
-      dataIndex: 'health_data',
-      key: 'cpu',
+      title: "CPU",
+      dataIndex: "health_data",
+      key: "cpu",
       render: (data) =>
         data ? (
           <Progress
@@ -112,13 +108,13 @@ const Dashboard = () => {
             status="active"
           />
         ) : (
-          '-'
+          "-"
         ),
     },
     {
-      title: '内存',
-      dataIndex: 'health_data',
-      key: 'memory',
+      title: "内存",
+      dataIndex: "health_data",
+      key: "memory",
       render: (data) =>
         data ? (
           <Progress
@@ -127,13 +123,13 @@ const Dashboard = () => {
             status="active"
           />
         ) : (
-          '-'
+          "-"
         ),
     },
     {
-      title: '服务状态',
-      dataIndex: 'health_data',
-      key: 'service',
+      title: "服务状态",
+      dataIndex: "health_data",
+      key: "service",
       render: (data) =>
         data ? (
           data.service_up ? (
@@ -142,7 +138,7 @@ const Dashboard = () => {
             <Tag color="error">已停止</Tag>
           )
         ) : (
-          '-'
+          "-"
         ),
     },
   ];
@@ -156,7 +152,7 @@ const Dashboard = () => {
               title="节点总数"
               value={stats.total_nodes}
               prefix={<CloudServerOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              valueStyle={{ color: "#1890ff" }}
             />
           </Card>
         </Col>
@@ -166,7 +162,7 @@ const Dashboard = () => {
               title="在线节点"
               value={stats.online_nodes}
               prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              valueStyle={{ color: "#52c41a" }}
             />
           </Card>
         </Col>
@@ -176,7 +172,7 @@ const Dashboard = () => {
               title="DNS服务器"
               value={stats.total_servers}
               prefix={<SettingOutlined />}
-              valueStyle={{ color: '#722ed1' }}
+              valueStyle={{ color: "#722ed1" }}
             />
           </Card>
         </Col>
@@ -186,7 +182,7 @@ const Dashboard = () => {
               title="地址映射"
               value={stats.total_addresses}
               prefix={<GlobalOutlined />}
-              valueStyle={{ color: '#faad14' }}
+              valueStyle={{ color: "#faad14" }}
             />
           </Card>
         </Col>
@@ -208,7 +204,7 @@ const Dashboard = () => {
         <Col xs={24} lg={8}>
           <Card title="服务器类型分布">
             {stats.servers_by_type && stats.servers_by_type.length > 0 ? (
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space direction="vertical" style={{ width: "100%" }}>
                 {stats.servers_by_type.map((item) => (
                   <div key={item.Type}>
                     <div style={{ marginBottom: 8 }}>
@@ -218,9 +214,7 @@ const Dashboard = () => {
                       </Space>
                     </div>
                     <Progress
-                      percent={
-                        (item.Count / stats.total_servers) * 100
-                      }
+                      percent={(item.Count / stats.total_servers) * 100}
                       showInfo={false}
                     />
                   </div>
@@ -245,8 +239,8 @@ const Dashboard = () => {
                       <span>→</span>
                       <code>{addr.ip}</code>
                     </Space>
-                    <div style={{ color: '#999', fontSize: '12px' }}>
-                      {moment(addr.created_at).fromNow()}
+                    <div style={{ color: "#999", fontSize: "12px" }}>
+                      {dayjs(addr.created_at).fromNow()}
                     </div>
                   </Timeline.Item>
                 ))}
@@ -264,13 +258,15 @@ const Dashboard = () => {
                 {stats.recent_nodes.map((node) => (
                   <Timeline.Item key={node.id}>
                     <Space>
-                      <Tag color={node.status === 'online' ? 'success' : 'default'}>
+                      <Tag
+                        color={node.status === "online" ? "success" : "default"}
+                      >
                         {node.name}
                       </Tag>
                       <code>{node.host}</code>
                     </Space>
-                    <div style={{ color: '#999', fontSize: '12px' }}>
-                      {moment(node.created_at).fromNow()}
+                    <div style={{ color: "#999", fontSize: "12px" }}>
+                      {dayjs(node.created_at).fromNow()}
                     </div>
                   </Timeline.Item>
                 ))}

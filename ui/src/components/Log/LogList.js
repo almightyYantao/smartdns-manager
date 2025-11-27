@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Table,
   Form,
@@ -26,7 +26,7 @@ import {
   CloudServerOutlined,
 } from "@ant-design/icons";
 import { getDNSLogs, getGroups, getServers } from "../../api";
-import moment from "moment";
+import dayjs from "dayjs";
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -44,12 +44,16 @@ const LogList = ({ nodeId, nodeName }) => {
   });
   const [form] = Form.useForm();
   const [intervalRef, setIntervalRef] = useState(null);
+  const [sortInfo, setSortInfo] = useState({
+    field: 'timestamp',
+    order: 'descend'
+  });
 
   useEffect(() => {
     loadGroups();
     loadServers();
     loadLogs();
-  }, [nodeId, pagination.current, pagination.pageSize]);
+  }, [nodeId, pagination.current, pagination.pageSize, sortInfo.field, sortInfo.order]);
 
   // 加载分组数据
   const loadGroups = async () => {
@@ -107,6 +111,8 @@ const LogList = ({ nodeId, nodeName }) => {
         node_id: nodeId,
         page: pagination.current,
         page_size: pagination.pageSize,
+        sort_field: sortInfo.field,
+        sort_order: sortInfo.order === 'descend' ? 'desc' : 'asc',
         ...values,
       };
       if (values.time_range) {
@@ -138,58 +144,93 @@ const LogList = ({ nodeId, nodeName }) => {
     loadLogs();
   };
 
-  const handleTableChange = (newPagination) => {
+  const handleTableChange = (newPagination, filters, sorter) => {
     setPagination(newPagination);
+    
+    // 处理排序变化
+    if (sorter && sorter.field) {
+      setSortInfo({
+        field: sorter.field,
+        order: sorter.order || 'descend'
+      });
+    } else if (sorter === null || !sorter.order) {
+      // 清除排序，恢复默认
+      setSortInfo({
+        field: 'timestamp',
+        order: 'descend'
+      });
+    }
   };
 
   const handleAutoRefreshChange = (checked) => {
     setAutoRefresh(checked);
   };
 
+  // 添加状态来管理当前选中的时间范围
+  const [currentTimeRange, setCurrentTimeRange] = useState(null);
+  const [selectedQuickRange, setSelectedQuickRange] = useState(null);
+
   // 快速时间选择处理函数
   const handleQuickTimeSelect = (minutes) => {
-    const now = moment();
-    const start = moment().subtract(minutes, 'minutes');
+    // 如果点击的是当前已选中的按钮，则取消选择
+    if (selectedQuickRange === minutes) {
+      console.log("取消时间范围选择");
+
+      // 清除状态
+      setCurrentTimeRange(null);
+      setSelectedQuickRange(null);
+
+      // 清除表单值
+      form.setFieldsValue({
+        time_range: undefined,
+      });
+
+      // 立即触发搜索
+      setPagination({ ...pagination, current: 1 });
+      setTimeout(() => {
+        loadLogs();
+      }, 100);
+      return;
+    }
+
+    // 否则设置新的时间范围
+    const now = dayjs();
+    const start = dayjs().subtract(minutes, "minutes");
+    const timeRange = [start, now];
+
+    // 更新状态
+    setCurrentTimeRange(timeRange);
+    setSelectedQuickRange(minutes);
+
+    // 设置表单值
     form.setFieldsValue({
-      time_range: [start, now]
+      time_range: timeRange,
     });
+
+    // 立即触发搜索
+    setPagination({ ...pagination, current: 1 });
+    setTimeout(() => {
+      loadLogs();
+    }, 100);
   };
 
-  // 自定义时间范围预设
-  const getTimeRangePresets = () => [
-    {
-      label: '最近1分钟',
-      value: [moment().subtract(1, 'minutes'), moment()],
-    },
-    {
-      label: '最近3分钟',
-      value: [moment().subtract(3, 'minutes'), moment()],
-    },
-    {
-      label: '最近5分钟',
-      value: [moment().subtract(5, 'minutes'), moment()],
-    },
-    {
-      label: '最近10分钟',
-      value: [moment().subtract(10, 'minutes'), moment()],
-    },
-    {
-      label: '最近30分钟',
-      value: [moment().subtract(30, 'minutes'), moment()],
-    },
-    {
-      label: '最近1小时',
-      value: [moment().subtract(1, 'hours'), moment()],
-    },
-    {
-      label: '最近3小时',
-      value: [moment().subtract(3, 'hours'), moment()],
-    },
-    {
-      label: '今天',
-      value: [moment().startOf('day'), moment()],
-    },
-  ];
+  // 处理RangePicker的变化
+  const handleTimeRangeChange = (dates, dateStrings) => {
+    console.log("时间范围改变:", dates, dateStrings);
+    if (dates && dates.length === 2) {
+      setCurrentTimeRange(dates);
+      setSelectedQuickRange(null); // 清除快速选择状态
+      form.setFieldsValue({
+        time_range: dates,
+      });
+    } else {
+      setCurrentTimeRange(null);
+      setSelectedQuickRange(null);
+      form.setFieldsValue({
+        time_range: undefined,
+      });
+    }
+  };
 
   const getQueryTypeTag = (type) => {
     const typeMap = {
@@ -205,20 +246,20 @@ const LogList = ({ nodeId, nodeName }) => {
 
   // 根据分组名称获取对应的服务器列表
   const getServersByGroup = (groupName) => {
-    return servers.filter(server => 
-      server.groups && server.groups.includes(groupName)
+    return servers.filter(
+      (server) => server.groups && server.groups.includes(groupName)
     );
   };
 
   // 提取服务器地址的IP部分
   const extractServerIP = (address) => {
-    if (!address) return '';
-    
+    if (!address) return "";
+
     let cleanAddress = address;
-    cleanAddress = cleanAddress.replace(/^(https?|tls):\/\//, '');
-    cleanAddress = cleanAddress.split('/')[0];
-    cleanAddress = cleanAddress.split(':')[0];
-    
+    cleanAddress = cleanAddress.replace(/^(https?|tls):\/\//, "");
+    cleanAddress = cleanAddress.split("/")[0];
+    cleanAddress = cleanAddress.split(":")[0];
+
     return cleanAddress;
   };
 
@@ -228,8 +269,8 @@ const LogList = ({ nodeId, nodeName }) => {
       return <span style={{ color: "#999" }}>-</span>;
     }
 
-    const groupConfig = groups.find(g => g.name === groupName);
-    const groupColor = groupConfig?.color || '#1890ff';
+    const groupConfig = groups.find((g) => g.name === groupName);
+    const groupColor = groupConfig?.color || "#1890ff";
     const groupDescription = groupConfig?.description;
     const groupServers = getServersByGroup(groupName);
 
@@ -237,53 +278,69 @@ const LogList = ({ nodeId, nodeName }) => {
       <div style={{ minWidth: 160 }}>
         <Space direction="vertical" size={4}>
           <Tooltip title={groupDescription || `分组: ${groupName}`}>
-            <Tag 
-              color={groupColor} 
+            <Tag
+              color={groupColor}
               icon={<GlobalOutlined />}
-              style={{ margin: 0, fontSize: '11px', fontWeight: 'bold' }}
+              style={{ margin: 0, fontSize: "11px", fontWeight: "bold" }}
             >
               {groupName}
             </Tag>
           </Tooltip>
-          
+
           {groupServers.length > 0 ? (
-            <div style={{ maxHeight: '80px', overflowY: 'auto' }}>
+            <div style={{ maxHeight: "80px", overflowY: "auto" }}>
               {groupServers.map((server, index) => {
                 const serverIP = extractServerIP(server.address);
-                const serverType = server.type?.toUpperCase() || 'UDP';
-                
+                const serverType = server.type?.toUpperCase() || "UDP";
+
                 return (
-                  <Tooltip 
+                  <Tooltip
                     key={index}
                     title={`${serverType}: ${server.address}`}
                   >
-                    <div style={{ 
-                      fontSize: '10px', 
-                      color: '#666',
-                      fontFamily: 'monospace',
-                      background: '#f8f9fa',
-                      padding: '2px 6px',
-                      margin: '1px 0',
-                      borderRadius: '3px',
-                      border: '1px solid #e9ecef',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}>
-                      <CloudServerOutlined style={{ fontSize: '8px', color: '#999' }} />
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        color: "#666",
+                        fontFamily: "monospace",
+                        background: "#f8f9fa",
+                        padding: "2px 6px",
+                        margin: "1px 0",
+                        borderRadius: "3px",
+                        border: "1px solid #e9ecef",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <CloudServerOutlined
+                        style={{ fontSize: "8px", color: "#999" }}
+                      />
+                      <span
+                        style={{
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
                         {serverIP}
                       </span>
-                      <Tag 
-                        color={server.type === 'https' ? 'green' : 
-                              server.type === 'tls' ? 'blue' : 
-                              server.type === 'tcp' ? 'orange' : 'default'}
-                        style={{ 
-                          fontSize: '8px', 
-                          margin: 0, 
-                          padding: '0 3px',
-                          lineHeight: '12px',
-                          minWidth: 'auto'
+                      <Tag
+                        color={
+                          server.type === "https"
+                            ? "green"
+                            : server.type === "tls"
+                            ? "blue"
+                            : server.type === "tcp"
+                            ? "orange"
+                            : "default"
+                        }
+                        style={{
+                          fontSize: "8px",
+                          margin: 0,
+                          padding: "0 3px",
+                          lineHeight: "12px",
+                          minWidth: "auto",
                         }}
                       >
                         {serverType}
@@ -294,24 +351,28 @@ const LogList = ({ nodeId, nodeName }) => {
               })}
             </div>
           ) : (
-            <div style={{ 
-              fontSize: '10px', 
-              color: '#999',
-              fontStyle: 'italic',
-              padding: '2px 0'
-            }}>
+            <div
+              style={{
+                fontSize: "10px",
+                color: "#999",
+                fontStyle: "italic",
+                padding: "2px 0",
+              }}
+            >
               无配置服务器
             </div>
           )}
-          
+
           {groupServers.length > 0 && (
-            <div style={{ 
-              fontSize: '9px', 
-              color: '#999', 
-              textAlign: 'center',
-              borderTop: '1px solid #f0f0f0',
-              paddingTop: '2px'
-            }}>
+            <div
+              style={{
+                fontSize: "9px",
+                color: "#999",
+                textAlign: "center",
+                borderTop: "1px solid #f0f0f0",
+                paddingTop: "2px",
+              }}
+            >
               共 {groupServers.length} 个服务器
             </div>
           )}
@@ -326,11 +387,14 @@ const LogList = ({ nodeId, nodeName }) => {
       dataIndex: "timestamp",
       key: "timestamp",
       width: 180,
+      sorter: true,
+      sortDirections: ['descend', 'ascend'],
+      defaultSortOrder: sortInfo.field === 'timestamp' ? sortInfo.order : null,
       render: (time) => (
-        <Tooltip title={moment(time).format("YYYY-MM-DD HH:mm:ss")}>
+        <Tooltip title={dayjs(time).format("YYYY-MM-DD HH:mm:ss")}>
           <Space size={4}>
             <ClockCircleOutlined style={{ color: "#1890ff" }} />
-            <span>{moment(time).format("HH:mm:ss")}</span>
+            <span>{dayjs(time).format("HH:mm:ss")}</span>
           </Space>
         </Tooltip>
       ),
@@ -340,6 +404,9 @@ const LogList = ({ nodeId, nodeName }) => {
       dataIndex: "client_ip",
       key: "client_ip",
       width: 130,
+      sorter: true,
+      sortDirections: ['descend', 'ascend'],
+      defaultSortOrder: sortInfo.field === 'client_ip' ? sortInfo.order : null,
       render: (ip) => <Tag color="geekblue">{ip}</Tag>,
     },
     {
@@ -347,6 +414,9 @@ const LogList = ({ nodeId, nodeName }) => {
       dataIndex: "domain",
       key: "domain",
       ellipsis: true,
+      sorter: true,
+      sortDirections: ['descend', 'ascend'],
+      defaultSortOrder: sortInfo.field === 'domain' ? sortInfo.order : null,
       render: (domain) => (
         <Tooltip title={domain}>
           <code style={{ fontSize: "12px" }}>{domain}</code>
@@ -367,6 +437,9 @@ const LogList = ({ nodeId, nodeName }) => {
       key: "time_ms",
       width: 80,
       align: "right",
+      sorter: true,
+      sortDirections: ['descend', 'ascend'],
+      defaultSortOrder: sortInfo.field === 'time_ms' ? sortInfo.order : null,
       render: (time) => (
         <Tag color={time > 100 ? "red" : time > 50 ? "orange" : "green"}>
           {time}ms
@@ -379,6 +452,9 @@ const LogList = ({ nodeId, nodeName }) => {
       key: "speed_ms",
       width: 100,
       align: "right",
+      sorter: true,
+      sortDirections: ['descend', 'ascend'],
+      defaultSortOrder: sortInfo.field === 'speed_ms' ? sortInfo.order : null,
       render: (speed) => (
         <span style={{ color: speed < 0 ? "#999" : "#52c41a" }}>
           {speed.toFixed(1)}ms
@@ -460,20 +536,20 @@ const LogList = ({ nodeId, nodeName }) => {
               style={{ marginBottom: 8 }}
             >
               <Select placeholder="选择分组" allowClear>
-                {groups.map(group => (
+                {groups.map((group) => (
                   <Option key={group.id} value={group.name}>
                     <Space>
                       <div
                         style={{
                           width: 12,
                           height: 12,
-                          borderRadius: '50%',
+                          borderRadius: "50%",
                           backgroundColor: group.color,
-                          display: 'inline-block'
+                          display: "inline-block",
                         }}
                       />
                       {group.name}
-                      <span style={{ color: '#999', fontSize: '12px' }}>
+                      <span style={{ color: "#999", fontSize: "12px" }}>
                         ({getServersByGroup(group.name).length}个服务器)
                       </span>
                     </Space>
@@ -483,7 +559,7 @@ const LogList = ({ nodeId, nodeName }) => {
             </Form.Item>
           </Col>
         </Row>
-        
+
         {/* 时间范围选择行 */}
         <Row gutter={16}>
           <Col xs={24} sm={12} md={8}>
@@ -494,53 +570,52 @@ const LogList = ({ nodeId, nodeName }) => {
             >
               <RangePicker
                 showTime={{
-                  format: 'HH:mm:ss',
+                  format: "HH:mm:ss",
                 }}
                 format="YYYY-MM-DD HH:mm:ss"
                 style={{ width: "100%" }}
-                presets={getTimeRangePresets()}
-                placeholder={['开始时间', '结束时间']}
+                placeholder={["开始时间", "结束时间"]}
+                allowClear={true}
+                value={currentTimeRange}
+                onChange={handleTimeRangeChange}
               />
             </Form.Item>
           </Col>
           <Col xs={24} sm={12} md={16}>
-            <Form.Item
-              label="快速选择"
-              style={{ marginBottom: 8 }}
-            >
+            <Form.Item label="快速选择" style={{ marginBottom: 8 }}>
               <Space wrap>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   onClick={() => handleQuickTimeSelect(1)}
-                  type="dashed"
+                  type={selectedQuickRange === 1 ? "primary" : "dashed"}
                 >
                   1分钟
                 </Button>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   onClick={() => handleQuickTimeSelect(3)}
-                  type="dashed"
+                  type={selectedQuickRange === 3 ? "primary" : "dashed"}
                 >
                   3分钟
                 </Button>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   onClick={() => handleQuickTimeSelect(5)}
-                  type="dashed"
+                  type={selectedQuickRange === 5 ? "primary" : "dashed"}
                 >
                   5分钟
                 </Button>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   onClick={() => handleQuickTimeSelect(10)}
-                  type="dashed"
+                  type={selectedQuickRange === 10 ? "primary" : "dashed"}
                 >
                   10分钟
                 </Button>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   onClick={() => handleQuickTimeSelect(30)}
-                  type="dashed"
+                  type={selectedQuickRange === 30 ? "primary" : "dashed"}
                 >
                   30分钟
                 </Button>

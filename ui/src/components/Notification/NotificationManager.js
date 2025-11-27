@@ -33,7 +33,7 @@ import {
   getNotificationLogs,
   getNodes,
 } from '../../api';
-import moment from 'moment';
+import dayjs from "dayjs";
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -255,7 +255,7 @@ const NotificationManager = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (time) => moment(time).format('YYYY-MM-DD HH:mm:ss'),
+      render: (time) => dayjs(time).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
@@ -306,7 +306,7 @@ const NotificationManager = () => {
       dataIndex: 'sent_at',
       key: 'sent_at',
       width: 180,
-      render: (time) => moment(time).format('YYYY-MM-DD HH:mm:ss'),
+      render: (time) => dayjs(time).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '节点',
@@ -322,7 +322,7 @@ const NotificationManager = () => {
       title: '事件类型',
       dataIndex: 'event_type',
       key: 'event_type',
-      width: 120,
+      width: 200,
       render: (eventType) => {
         const event = eventTypes.find(e => e.value === eventType);
         return event ? (

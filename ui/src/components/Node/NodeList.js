@@ -9,6 +9,8 @@ import {
   Popconfirm,
   Tooltip,
   Badge,
+  Dropdown,
+  Card,
 } from "antd";
 import {
   PlusOutlined,
@@ -20,8 +22,11 @@ import {
   CodeOutlined,
   HistoryOutlined,
   SettingOutlined,
+  MoreOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
-import moment from "moment";
+import dayjs from "dayjs";
 import {
   getNodes,
   deleteNode,
@@ -33,7 +38,7 @@ import NodeForm from "./NodeForm";
 import NodeStatus from "./NodeStatus";
 import SyncStatus from "../Config/SyncStatus";
 import NodeInitializer from "./NodeInitializer";
-import AgentStatus from '../Agent/AgentStatus';
+import AgentStatus from "../Agent/AgentStatus";
 import { useNavigate } from "react-router-dom";
 
 const NodeList = () => {
@@ -267,88 +272,96 @@ const NodeList = () => {
       key: "last_check",
       width: 180,
       render: (time) =>
-        time ? moment(time).format("YYYY-MM-DD HH:mm:ss") : "-",
+        time ? dayjs(time).format("YYYY-MM-DD HH:mm:ss") : "-",
     },
     {
       title: "操作",
       key: "action",
       fixed: "right",
-      width: 320, // 增加宽度
-      render: (_, record) => (
-        <Space size="small">
-          <Tooltip title="初始化">
-            <Button
-              type="link"
-              size="small"
-              icon={<SettingOutlined />}
-              onClick={() => handleInitNode(record)}
-            ></Button>
-          </Tooltip>
-          <Tooltip title="查看状态">
-            <Button
-              type="link"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => handleViewStatus(record)}
-            />
-          </Tooltip>
-          <Tooltip title="配置管理">
-            <Button
-              type="link"
-              size="small"
-              icon={<CodeOutlined />}
-              onClick={() => navigate(`/nodes/${record.id}/config`)}
-            />
-          </Tooltip>
-          <Tooltip title="同步配置">
-            <Button
-              type="link"
-              size="small"
-              icon={<SyncOutlined />}
-              onClick={() => handleSyncConfig(record)}
-            />
-          </Tooltip>
-          <Tooltip title="同步日志">
-            <Button
-              type="link"
-              size="small"
-              icon={<HistoryOutlined />}
-              onClick={() => handleViewSyncLogs(record)}
-            />
-          </Tooltip>
-          <Tooltip title="测试连接">
-            <Button
-              type="link"
-              size="small"
-              icon={<ThunderboltOutlined />}
-              onClick={() => handleTest(record)}
-            />
-          </Tooltip>
-          <Tooltip title="编辑">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="确定要删除这个节点吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Tooltip title="删除">
+      width: 120,
+      render: (_, record) => {
+        const moreMenuItems = [
+          {
+            key: "status",
+            icon: <EyeOutlined />,
+            label: "查看状态",
+            onClick: () => handleViewStatus(record),
+          },
+          {
+            type: "divider",
+          },
+          {
+            key: "init",
+            icon: <SettingOutlined />,
+            label: "初始化节点",
+            onClick: () => handleInitNode(record),
+          },
+          {
+            key: "sync",
+            icon: <SyncOutlined />,
+            label: "同步配置",
+            onClick: () => handleSyncConfig(record),
+          },
+          {
+            key: "sync-logs",
+            icon: <HistoryOutlined />,
+            label: "同步日志",
+            onClick: () => handleViewSyncLogs(record),
+          },
+          {
+            key: "test",
+            icon: <ThunderboltOutlined />,
+            label: "测试连接",
+            onClick: () => handleTest(record),
+          },
+          {
+            type: "divider",
+          },
+          {
+            key: "delete",
+            icon: <DeleteOutlined />,
+            label: "删除节点",
+            danger: true,
+            onClick: () => {
+              Modal.confirm({
+                title: "删除节点",
+                content: `确定要删除节点 "${record.name}" 吗？此操作不可恢复。`,
+                okText: "确定删除",
+                okType: "danger",
+                cancelText: "取消",
+                onOk: () => handleDelete(record.id),
+              });
+            },
+          },
+        ];
+        return (
+          <Space size="small">
+            <Tooltip title="配置管理">
               <Button
                 type="link"
                 size="small"
-                danger
-                icon={<DeleteOutlined />}
+                icon={<CodeOutlined />}
+                onClick={() => navigate(`/nodes/${record.id}/config`)}
               />
             </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
+            <Tooltip title="编辑节点">
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => handleEdit(record)}
+              />
+            </Tooltip>
+            <Dropdown
+              menu={{ items: moreMenuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <Button type="link" size="small" icon={<MoreOutlined />} />
+            </Dropdown>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -357,30 +370,151 @@ const NodeList = () => {
     onChange: setSelectedRowKeys,
   };
 
+  // 批量操作处理函数
+  const handleBatchInit = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning("请先选择要初始化的节点");
+      return;
+    }
+    Modal.confirm({
+      title: "批量初始化节点",
+      content: `确定要初始化选中的 ${selectedRowKeys.length} 个节点吗？`,
+      okText: "确定",
+      cancelText: "取消",
+      onOk: () => {
+        selectedRowKeys.forEach((nodeId) => {
+          const node = nodes.find((n) => n.id === nodeId);
+          if (node) {
+            handleInitNode(node);
+          }
+        });
+        setSelectedRowKeys([]);
+      },
+    });
+  };
+
+  const handleBatchSync = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning("请先选择要同步的节点");
+      return;
+    }
+    Modal.confirm({
+      title: "批量同步配置",
+      content: `确定要向选中的 ${selectedRowKeys.length} 个节点同步配置吗？`,
+      okText: "确定",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          message.loading({ content: "正在批量同步...", key: "batch-sync" });
+          for (const nodeId of selectedRowKeys) {
+            await triggerFullSync(nodeId);
+          }
+          message.success({ content: "批量同步任务已启动", key: "batch-sync" });
+          setSelectedRowKeys([]);
+        } catch (error) {
+          message.error({ content: "批量同步失败", key: "batch-sync" });
+        }
+      },
+    });
+  };
+
+  const handleBatchTest = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning("请先选择要测试的节点");
+      return;
+    }
+
+    message.loading({ content: "正在批量测试连接...", key: "batch-test" });
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const nodeId of selectedRowKeys) {
+      try {
+        await testNodeConnection(nodeId);
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    message.success({
+      content: `批量测试完成：${successCount} 个成功，${failCount} 个失败`,
+      key: "batch-test",
+    });
+    setSelectedRowKeys([]);
+    loadNodes();
+  };
+
   return (
     <div>
+      {/* 批量操作工具栏 */}
+      {selectedRowKeys.length > 0 && (
+        <Card style={{ marginBottom: 16, backgroundColor: "#f0f9ff" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Space>
+              <span style={{ color: "#1890ff", fontWeight: "bold" }}>
+                已选择 {selectedRowKeys.length} 个节点
+              </span>
+              <Button size="small" onClick={() => setSelectedRowKeys([])}>
+                取消选择
+              </Button>
+            </Space>
+            <Space>
+              <Button
+                size="small"
+                icon={<PlayCircleOutlined />}
+                onClick={handleBatchInit}
+              >
+                批量初始化
+              </Button>
+              <Button
+                size="small"
+                icon={<SyncOutlined />}
+                onClick={handleBatchSync}
+              >
+                批量同步
+              </Button>
+              <Button
+                size="small"
+                icon={<ThunderboltOutlined />}
+                onClick={handleBatchTest}
+              >
+                批量测试
+              </Button>
+            </Space>
+          </div>
+        </Card>
+      )}
+
+      {/* 主要操作工具栏 */}
       <div
         style={{
           marginBottom: 16,
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
         <Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             添加节点
           </Button>
-          <Button icon={<SyncOutlined />} onClick={loadNodes}>
-            刷新
+          <Button icon={<ReloadOutlined />} onClick={loadNodes}>
+            刷新列表
           </Button>
-          {selectedRowKeys.length > 0 && (
-            <span style={{ marginLeft: 8 }}>
-              已选择 {selectedRowKeys.length} 个节点
-            </span>
-          )}
         </Space>
         <Space>
-          <span style={{ color: "#666" }}>共 {nodes.length} 个节点</span>
+          <span style={{ color: "#666" }}>
+            共 {nodes.length} 个节点
+            {selectedRowKeys.length > 0 &&
+              ` / 已选 ${selectedRowKeys.length} 个`}
+          </span>
         </Space>
       </div>
 
@@ -390,7 +524,7 @@ const NodeList = () => {
         dataSource={nodes}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 1500 }}
+        scroll={{ x: 1200 }}
         pagination={{
           pageSize: 10,
           showSizeChanger: true,

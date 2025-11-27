@@ -25,7 +25,7 @@ import {
   deleteServer,
   getGroups,
 } from "../../api";
-import moment from "moment";
+import dayjs from "dayjs";
 
 const { Option } = Select;
 
@@ -168,7 +168,7 @@ const ServerManager = () => {
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
-      render: (time) => moment(time).format("YYYY-MM-DD HH:mm:ss"),
+      render: (time) => dayjs(time).format("YYYY-MM-DD HH:mm:ss"),
     },
     {
       title: "操作",

@@ -26,7 +26,7 @@ import {
   uninstallSmartDNS,
   reinstallSmartDNS,
 } from '../../api';
-import moment from 'moment';
+import dayjs from "dayjs";
 
 const { Step } = Steps;
 
@@ -366,7 +366,7 @@ const NodeInitializer = ({ visible, onClose, node }) => {
                     />
                   )}
                   <div style={{ color: '#999', fontSize: '12px' }}>
-                    {moment(log.created_at).format('YYYY-MM-DD HH:mm:ss')}
+                    {dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss')}
                   </div>
                 </div>
               </Timeline.Item>

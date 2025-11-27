@@ -56,6 +56,11 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 		args = append(args, clientIP)
 	}
 
+	if group, ok := filters["group"].(string); ok && group != "" {
+		where = append(where, "group = ?")
+		args = append(args, group)
+	}
+
 	if domain, ok := filters["domain"].(string); ok && domain != "" {
 		// 优化模糊查询
 		where = append(where, "domain ILIKE ?")
@@ -112,28 +117,52 @@ func (s *LogMonitorServiceCH) GetLogs(page, pageSize int, filters map[string]int
 		}
 	}
 
+	// 构建排序子句
+	sortField := "timestamp"
+	sortOrder := "DESC"
+	
+	if field, ok := filters["sort_field"].(string); ok {
+		// 映射前端字段名到数据库字段名
+		fieldMap := map[string]string{
+			"timestamp": "timestamp",
+			"time_ms":   "time_ms",
+			"speed_ms":  "speed_ms",
+			"domain":    "domain",
+			"client_ip": "client_ip",
+		}
+		if dbField, exists := fieldMap[field]; exists {
+			sortField = dbField
+		}
+	}
+	
+	if order, ok := filters["sort_order"].(string); ok {
+		if strings.ToUpper(order) == "ASC" {
+			sortOrder = "ASC"
+		}
+	}
+
 	// 优化数据查询 - 移除 FINAL 关键字
 	offset := (page - 1) * pageSize
 
 	dataQuery := fmt.Sprintf(`
-        SELECT 
-            timestamp, 
-            node_id, 
-            client_ip, 
-            domain, 
-            query_type, 
-            time_ms, 
-            speed_ms, 
-            result_count, 
-            result_ips, 
-            raw_log,
-            group
-        FROM dns_query_log 
-        WHERE %s 
-        ORDER BY timestamp DESC 
-        LIMIT %d OFFSET %d
-        SETTINGS max_execution_time = 25
-    `, whereClause, pageSize, offset)
+	       SELECT
+	           timestamp,
+	           node_id,
+	           client_ip,
+	           domain,
+	           query_type,
+	           time_ms,
+	           speed_ms,
+	           result_count,
+	           result_ips,
+	           raw_log,
+	           group
+	       FROM dns_query_log
+	       WHERE %s
+	       ORDER BY %s %s
+	       LIMIT %d OFFSET %d
+	       SETTINGS max_execution_time = 25
+	   `, whereClause, sortField, sortOrder, pageSize, offset)
 
 	rows, err := s.conn.Query(ctx, dataQuery, args...)
 	if err != nil {

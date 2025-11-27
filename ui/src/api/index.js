@@ -12,3 +12,5 @@ export * from "./modules/sync";
 export * from "./modules/notifications";
 export * from './modules/logs';
 export * from './modules/agent';
+export * from './modules/databaseBackup';
+export * from './modules/scheduler';

@@ -32,7 +32,7 @@ import {
   exportDomainSet,
   getNodes,
 } from "../../api";
-import moment from "moment";
+import dayjs from "dayjs";
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -154,15 +154,24 @@ const DomainSetManager = () => {
       setSubmitLoading(true); // 开始loading
       const values = await form.validateFields();
       // 解析域名列表
-      const domains = values.domains
+      const rawDomains = values.domains
         .split("\n")
         .map((d) => d.trim())
         .filter((d) => d && !d.startsWith("#"));
 
+      // 去重处理
+      const uniqueDomains = [...new Set(rawDomains)];
+      const duplicateCount = rawDomains.length - uniqueDomains.length;
+      
+      // 如果有重复域名，提示用户
+      if (duplicateCount > 0) {
+        message.warning(`检测到 ${duplicateCount} 个重复域名，已自动去除`);
+      }
+
       const data = {
         name: values.name,
         description: values.description,
-        domains,
+        domains: uniqueDomains,
         node_ids: values.node_ids || [],
       };
 
@@ -274,7 +283,7 @@ const DomainSetManager = () => {
       dataIndex: "updated_at",
       key: "updated_at",
       width: 180,
-      render: (time) => moment(time).format("YYYY-MM-DD HH:mm:ss"),
+      render: (time) => dayjs(time).format("YYYY-MM-DD HH:mm:ss"),
     },
     {
       title: "操作",

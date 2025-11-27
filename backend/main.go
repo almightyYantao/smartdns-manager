@@ -43,10 +43,30 @@ func main() {
 	// 创建日志监控服务
 	logMonitorService := services.NewLogMonitorService()
 
+	// 创建S3服务
+	var s3Service *services.S3Service
+	
+	// 创建调度服务
+	schedulerService, err := services.NewSchedulerService(database.DB, config.GetConfig(), s3Service)
+	if err != nil {
+		log.Fatalf("创建调度服务失败: %v", err)
+	}
+	
+	// 启动调度服务
+	if err := schedulerService.Start(); err != nil {
+		log.Printf("启动调度服务失败: %v", err)
+	}
+
+	// 创建数据库备份服务（保留兼容性）
+	databaseBackupService := services.NewDatabaseBackupService(database.DB, s3Service)
+
 	// 初始化处理器
 	handlers.InitLogMonitorHandler(logMonitorService)
+	databaseBackupHandler := handlers.NewDatabaseBackupHandler(database.DB, databaseBackupService)
+	schedulerHandler := handlers.NewSchedulerHandler(schedulerService)
 
 	defer healthChecker.Stop()
+	defer schedulerService.Stop()
 
 	// 公开路由
 	public := r.Group("/api")
@@ -185,6 +205,53 @@ func main() {
 		protected.POST("/nameservers", handlers.AddNameserver)
 		protected.PUT("/nameservers/:id", handlers.UpdateNameserver)
 		protected.DELETE("/nameservers/:id", handlers.DeleteNameserver)
+
+		// ========== 数据库备份管理 ==========
+		// 备份配置管理
+		protected.GET("/database-backup/configs", databaseBackupHandler.GetBackupConfigs)
+		protected.POST("/database-backup/configs", databaseBackupHandler.CreateBackupConfig)
+		protected.GET("/database-backup/configs/:id", databaseBackupHandler.GetBackupConfig)
+		protected.PUT("/database-backup/configs/:id", databaseBackupHandler.UpdateBackupConfig)
+		protected.DELETE("/database-backup/configs/:id", databaseBackupHandler.DeleteBackupConfig)
+		
+		// 备份操作
+		protected.POST("/database-backup/configs/:id/backup", databaseBackupHandler.ManualBackup)
+		protected.GET("/database-backup/history", databaseBackupHandler.GetBackupHistory)
+		protected.POST("/database-backup/restore", databaseBackupHandler.RestoreBackup)
+		protected.GET("/database-backup/stats", databaseBackupHandler.GetBackupStats)
+		protected.POST("/database-backup/test-s3", databaseBackupHandler.TestS3Connection)
+
+		// ========== 定时任务管理 ==========
+		// 任务管理
+		protected.GET("/scheduler/tasks", schedulerHandler.GetTasks)
+		protected.POST("/scheduler/tasks", schedulerHandler.CreateTask)
+		protected.GET("/scheduler/tasks/:id", schedulerHandler.GetTask)
+		protected.PUT("/scheduler/tasks/:id", schedulerHandler.UpdateTask)
+		protected.DELETE("/scheduler/tasks/:id", schedulerHandler.DeleteTask)
+		protected.POST("/scheduler/tasks/:id/toggle", schedulerHandler.ToggleTask)
+		protected.POST("/scheduler/tasks/:id/execute", schedulerHandler.ExecuteTask)
+		
+		// 任务执行历史
+		protected.GET("/scheduler/tasks/:id/executions", schedulerHandler.GetTaskExecutions)
+		protected.GET("/scheduler/running", schedulerHandler.GetRunningTasks)
+		protected.GET("/scheduler/stats", schedulerHandler.GetStats)
+		
+		// 快速任务创建
+		protected.POST("/scheduler/quick-task", schedulerHandler.CreateQuickTask)
+		
+		// 遥测目标管理
+		protected.GET("/scheduler/telemetry/targets", schedulerHandler.GetTelemetryTargets)
+		protected.POST("/scheduler/telemetry/targets", schedulerHandler.CreateTelemetryTarget)
+		protected.PUT("/scheduler/telemetry/targets/:id", schedulerHandler.UpdateTelemetryTarget)
+		protected.DELETE("/scheduler/telemetry/targets/:id", schedulerHandler.DeleteTelemetryTarget)
+		protected.POST("/scheduler/telemetry/targets/:id/test", schedulerHandler.TestTelemetryTarget)
+		
+		// 遥测结果和统计
+		protected.GET("/scheduler/telemetry/results", schedulerHandler.GetTelemetryResults)
+		protected.GET("/scheduler/telemetry/stats", schedulerHandler.GetTelemetryStats)
+		
+		// 脚本模板管理
+		protected.GET("/scheduler/script-templates", schedulerHandler.GetScriptTemplates)
 	}
 
 	// 启动服务器

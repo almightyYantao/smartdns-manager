@@ -2,8 +2,8 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ConfigProvider, App as AntApp, Card } from "antd";
 import zhCN from "antd/locale/zh_CN";
-import moment from "moment";
-import "moment/locale/zh-cn";
+import dayjs from "dayjs";
+import "dayjs/locale/zh-cn";
 import "./App.css";
 
 import { isAuthenticated } from "./utils/auth";
@@ -22,8 +22,10 @@ import NameserverManager from "./components/Nameserver/NameserverManager";
 import GroupManager from "./components/GroupManager/GroupManager";
 import Backup from "./pages/Backup";
 import Logs from "./pages/Logs";
+import Tasks from "./pages/Tasks";
+import Telemetry from "./pages/Telemetry";
 
-moment.locale("zh-cn");
+dayjs.locale("zh-cn");
 
 // 受保护的路由组件
 const ProtectedRoute = ({ children }) => {
@@ -90,6 +92,8 @@ function App() {
                 }
               />
               <Route path="logs" element={<Logs />} />
+              <Route path="tasks" element={<Tasks />} />
+              <Route path="telemetry" element={<Telemetry />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -5,9 +5,12 @@ go 1.24.0
 toolchain go1.24.3
 
 require (
+	github.com/ClickHouse/clickhouse-go/v2 v2.10.1
+	github.com/aws/aws-sdk-go-v2 v1.39.6
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/crypto v0.44.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
@@ -15,9 +18,7 @@ require (
 
 require (
 	github.com/ClickHouse/ch-go v0.52.1 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.10.1 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.39.6 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.3 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.13 // indirect
@@ -78,11 +79,8 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/mod v0.30.0 // indirect
-	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/net v0.47.0
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
-	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )

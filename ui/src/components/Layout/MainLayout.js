@@ -8,6 +8,8 @@ import {
   LogoutOutlined,
   UserOutlined,
   BellOutlined,
+  ScheduleOutlined,
+  MonitorOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { removeToken, removeUserInfo, getUserInfo } from "../../utils/auth";
@@ -44,7 +46,16 @@ const MainLayout = () => {
           key: "/logs",
           label: "日志管理",
         },
+        {
+          key: "/tasks",
+          label: "任务管理",
+        },
       ],
+    },
+    {
+      key: "/telemetry",
+      icon: <MonitorOutlined />,
+      label: "网络遥测",
     },
     {
       key: "config",

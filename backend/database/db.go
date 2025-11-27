@@ -52,6 +52,14 @@ func InitDB() {
 		&models.InitLog{},
 		&models.Backup{},
 		&models.DNSLog{},
+		&models.BackupConfig{},
+		&models.BackupHistory{},
+		&models.File{},
+		// 调度任务相关表
+		&models.ScheduledTask{},
+		&models.TaskExecution{},
+		&models.TelemetryTarget{},
+		&models.TelemetryResult{},
 	)
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)

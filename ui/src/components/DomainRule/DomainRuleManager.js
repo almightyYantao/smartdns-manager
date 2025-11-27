@@ -28,7 +28,7 @@ import {
   getNodes,
   getServers,
 } from '../../api';
-import moment from 'moment';
+import dayjs from "dayjs";
 
 const { Option } = Select;
 

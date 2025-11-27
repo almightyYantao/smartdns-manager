@@ -34,7 +34,7 @@ import {
   previewBackup as previewBackupApi,
   getNodes,
 } from "../../api";
-import moment from "moment";
+import dayjs from "dayjs";
 
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
@@ -299,7 +299,7 @@ const BackupManager = () => {
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
-      render: (time) => moment(time).format("YYYY-MM-DD HH:mm:ss"),
+      render: (time) => dayjs(time).format("YYYY-MM-DD HH:mm:ss"),
       sorter: (a, b) => new Date(a.created_at) - new Date(b.created_at),
       defaultSortOrder: "descend",
     },
@@ -568,7 +568,7 @@ const BackupManager = () => {
                 {formatFileSize(previewBackup.size)}
               </Descriptions.Item>
               <Descriptions.Item label="创建时间" span={2}>
-                {moment(previewBackup.created_at).format("YYYY-MM-DD HH:mm:ss")}
+                {dayjs(previewBackup.created_at).format("YYYY-MM-DD HH:mm:ss")}
               </Descriptions.Item>
               {previewBackup.comment && (
                 <Descriptions.Item label="备注" span={2}>
@@ -627,7 +627,7 @@ const BackupManager = () => {
               {formatFileSize(selectedBackup.size)}
             </Descriptions.Item>
             <Descriptions.Item label="创建时间">
-              {moment(selectedBackup.created_at).format("YYYY-MM-DD HH:mm:ss")}
+              {dayjs(selectedBackup.created_at).format("YYYY-MM-DD HH:mm:ss")}
             </Descriptions.Item>
             {selectedBackup.comment && (
               <Descriptions.Item label="备注">

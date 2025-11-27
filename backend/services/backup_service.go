@@ -323,3 +323,78 @@ func (m *BackupStorageManager) GetConfig() map[string]interface{} {
 func (m *BackupStorageManager) ValidateConfig() error {
 	return m.config.Validate()
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 通用备份服务
+// ═══════════════════════════════════════════════════════════════
+
+// BackupService 通用备份服务
+type BackupService struct {
+	storageManager *BackupStorageManager
+}
+
+// NewBackupService 创建通用备份服务
+func NewBackupService() *BackupService {
+	return &BackupService{
+		storageManager: NewBackupStorageManager(),
+	}
+}
+
+// PerformNodeBackup 执行节点备份操作（通用方法）
+func (bs *BackupService) PerformNodeBackup(
+	ctx context.Context,
+	node *models.Node,
+	storage BackupStorage,
+	storageType string,
+	comment string,
+	tags string,
+	isAuto bool,
+) (*models.Backup, error) {
+	// 生成备份文件名
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("smartdns_%s_%s.conf", node.Name, timestamp)
+
+	// 创建 SSH 客户端读取配置
+	sshClient, err := NewSSHClient(node)
+	if err != nil {
+		return nil, fmt.Errorf("创建SSH连接失败: %w", err)
+	}
+	defer sshClient.Close()
+
+	// 读取配置文件内容
+	configContent, err := sshClient.ExecuteCommand("sudo cat /etc/smartdns/smartdns.conf")
+	if err != nil {
+		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	// 保存到存储
+	storagePath, err := storage.Save(ctx, []byte(configContent), filename)
+	if err != nil {
+		return nil, fmt.Errorf("保存备份失败: %w", err)
+	}
+
+	// 创建备份记录
+	backup := &models.Backup{
+		NodeID:      node.ID,
+		Name:        filename,
+		Path:        storagePath,
+		Size:        int64(len(configContent)),
+		IsAuto:      isAuto,
+		Comment:     comment,
+		Tags:        tags,
+		StorageType: storageType,
+		IsDeleted:   false,
+	}
+
+	// S3 存储的额外信息
+	if storageType == "s3" {
+		backup.S3Key = storagePath
+		// 生成下载 URL（24小时有效）
+		downloadURL, err := storage.GetDownloadURL(ctx, storagePath, 24*time.Hour)
+		if err == nil {
+			backup.DownloadURL = downloadURL
+		}
+	}
+
+	return backup, nil
+}

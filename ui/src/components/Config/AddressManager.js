@@ -36,7 +36,7 @@ import {
   triggerFullSync,
   batchFullSync,
 } from "../../api";
-import moment from "moment";
+import dayjs from "dayjs";
 import SyncStatus from "./SyncStatus";
 
 const { Option } = Select;
@@ -207,7 +207,7 @@ const AddressManager = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `addresses_${moment().format("YYYYMMDD_HHmmss")}.conf`;
+    a.download = `addresses_${dayjs().format("YYYYMMDD_HHmmss")}.conf`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -365,7 +365,7 @@ const AddressManager = () => {
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
-      render: (time) => moment(time).format("YYYY-MM-DD HH:mm:ss"),
+      render: (time) => dayjs(time).format("YYYY-MM-DD HH:mm:ss"),
     },
     {
       title: "操作",

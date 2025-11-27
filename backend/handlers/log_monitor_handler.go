@@ -361,6 +361,10 @@ func GetDNSLogs(c *gin.Context) {
 		filters["client_ip"] = clientIP
 	}
 
+	if group := c.Query("group"); group != "" {
+		filters["group"] = group
+	}
+
 	// 域名
 	if domain := c.Query("domain"); domain != "" {
 		filters["domain"] = domain
@@ -406,6 +410,31 @@ func GetDNSLogs(c *gin.Context) {
 			}
 		}
 	}
+
+	// 解析排序参数
+	sortField := c.DefaultQuery("sort_field", "timestamp")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+	
+	// 验证排序字段
+	allowedSortFields := map[string]bool{
+		"timestamp": true,
+		"time_ms":   true,
+		"speed_ms":  true,
+		"domain":    true,
+		"client_ip": true,
+	}
+	
+	if !allowedSortFields[sortField] {
+		sortField = "timestamp"
+	}
+	
+	// 验证排序方向
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+	
+	filters["sort_field"] = sortField
+	filters["sort_order"] = sortOrder
 
 	// 添加请求超时控制
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)

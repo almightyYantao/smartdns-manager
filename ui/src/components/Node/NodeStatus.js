@@ -17,7 +17,7 @@ import {
   CodeOutlined,
 } from '@ant-design/icons';
 import { getNodeStatus, getNodeLogs } from '../../api';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const NodeStatus = ({ node }) => {
   const [status, setStatus] = useState(null);
@@ -92,7 +92,7 @@ const NodeStatus = ({ node }) => {
                 {status.version || '未知'}
               </Descriptions.Item>
               <Descriptions.Item label="检查时间">
-                {moment(status.last_checked).format('YYYY-MM-DD HH:mm:ss')}
+                {dayjs(status.last_checked).format('YYYY-MM-DD HH:mm:ss')}
               </Descriptions.Item>
             </Descriptions>
           </Card>

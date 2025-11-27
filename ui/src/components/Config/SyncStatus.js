@@ -19,7 +19,7 @@ import {
   ReloadOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { getSyncLogs, retrySyncLog, getSyncStats } from '../../api';
 
 const { RangePicker } = DatePicker;
@@ -124,7 +124,7 @@ const SyncStatus = ({ visible, onClose, nodeId }) => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (time) => moment(time).format('YYYY-MM-DD HH:mm:ss'),
+      render: (time) => dayjs(time).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '类型',
