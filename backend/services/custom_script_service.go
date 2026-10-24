@@ -30,6 +30,14 @@ func NewCustomScriptService(db *gorm.DB, config *config.Config) (*CustomScriptSe
 
 // ExecuteScript 执行自定义脚本
 func (s *CustomScriptService) ExecuteScript(ctx context.Context, scriptConfig models.CustomScriptConfig) (string, error) {
+	local, err := scriptRunsLocally(scriptConfig.ExecutionMode, scriptConfig.NodeIDs)
+	if err != nil {
+		return "", err
+	}
+	if local {
+		return executeLocalScript(ctx, scriptConfig.Script, scriptConfig.WorkingDir,
+			scriptConfig.RunAsUser, scriptConfig.EnvVars, time.Duration(scriptConfig.Timeout)*time.Second)
+	}
 	var nodes []models.Node
 
 	// 获取要执行脚本的节点列表
@@ -189,6 +197,13 @@ func (s *CustomScriptService) ValidateScript(scriptConfig models.CustomScriptCon
 	}
 
 	// 验证节点ID
+	local, err := scriptRunsLocally(scriptConfig.ExecutionMode, scriptConfig.NodeIDs)
+	if err != nil {
+		return err
+	}
+	if local {
+		return nil
+	}
 	if len(scriptConfig.NodeIDs) > 0 {
 		var count int64
 		if err := s.db.Model(&models.Node{}).Where("id IN ?", scriptConfig.NodeIDs).Count(&count).Error; err != nil {

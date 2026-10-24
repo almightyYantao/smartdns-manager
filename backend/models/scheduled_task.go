@@ -181,12 +181,13 @@ type TelemetryConfig struct {
 
 // CustomScriptConfig 自定义脚本任务配置
 type CustomScriptConfig struct {
-	NodeIDs     []uint            `json:"node_ids"`     // 要执行脚本的节点ID列表，空表示所有节点
-	Script      string            `json:"script"`       // Shell脚本内容
-	Timeout     int               `json:"timeout"`      // 脚本执行超时时间（秒），默认300秒
-	WorkingDir  string            `json:"working_dir"`  // 脚本执行的工作目录，默认/tmp
-	EnvVars     map[string]string `json:"env_vars"`     // 环境变量设置
-	RunAsUser   string            `json:"run_as_user"`  // 执行脚本的用户，默认root
+	ExecutionMode string            `json:"execution_mode,omitempty"` // remote（默认）或管理台本机 local
+	NodeIDs       []uint            `json:"node_ids"`                 // 要执行脚本的节点ID列表，空表示所有节点
+	Script        string            `json:"script"`                   // Shell脚本内容
+	Timeout       int               `json:"timeout"`                  // 脚本执行超时时间（秒），默认300秒
+	WorkingDir    string            `json:"working_dir"`              // 脚本执行的工作目录，默认/tmp
+	EnvVars       map[string]string `json:"env_vars"`                 // 环境变量设置
+	RunAsUser     string            `json:"run_as_user"`              // 执行脚本的用户，默认root
 }
 
 // TaskStats 任务统计信息
