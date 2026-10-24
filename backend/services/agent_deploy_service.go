@@ -135,7 +135,7 @@ func (s *AgentDeployService) generateInstallCommand(node *models.Node, req *mode
 	// 如果有代理配置，添加代理参数
 	if node.ProxyConfig != nil && node.ProxyConfig.Enabled {
 		proxyURL := s.buildProxyURL(node.ProxyConfig)
-		log.Printf(proxyURL)
+		log.Print("节点代理配置已启用")
 		params = append(params, fmt.Sprintf("--proxy \"%s\"", proxyURL))
 	}
 	//log.Printf(node.ProxyConfig.Enabled)
