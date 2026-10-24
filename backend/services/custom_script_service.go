@@ -33,7 +33,7 @@ func (s *CustomScriptService) ExecuteScript(ctx context.Context, scriptConfig mo
 	var nodes []models.Node
 
 	// 获取要执行脚本的节点列表
-	query := s.db.Where("enabled = ?", true)
+	query := s.db
 	if len(scriptConfig.NodeIDs) > 0 {
 		query = query.Where("id IN ?", scriptConfig.NodeIDs)
 	}
@@ -191,7 +191,7 @@ func (s *CustomScriptService) ValidateScript(scriptConfig models.CustomScriptCon
 	// 验证节点ID
 	if len(scriptConfig.NodeIDs) > 0 {
 		var count int64
-		if err := s.db.Model(&models.Node{}).Where("id IN ? AND enabled = ?", scriptConfig.NodeIDs, true).Count(&count); err != nil {
+		if err := s.db.Model(&models.Node{}).Where("id IN ?", scriptConfig.NodeIDs).Count(&count).Error; err != nil {
 			return fmt.Errorf("验证节点ID失败: %w", err)
 		}
 		if count == 0 {
