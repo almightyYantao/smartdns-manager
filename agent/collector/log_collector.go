@@ -28,11 +28,12 @@ type PositionInfo struct {
 }
 
 type LogCollector struct {
-	cfg      *config.Config
-	sender   *sender.ClickHouseSender
-	parser   *utils.LogParser
-	buffer   []models.DNSLogRecord
-	lastSize int64
+	cfg          *config.Config
+	sender       *sender.ClickHouseSender
+	parser       *utils.LogParser
+	buffer       []models.DNSLogRecord
+	lastSize     int64
+	staticTagger *utils.StaticAddressTagger
 
 	// 统计字段
 	processedLines int64
@@ -67,6 +68,10 @@ func NewLogCollector(cfg *config.Config, sender *sender.ClickHouseSender) (*LogC
 		parser:       parser,
 		buffer:       make([]models.DNSLogRecord, 0, cfg.BatchSize),
 		positionFile: positionFile,
+	}
+	if cfg.StaticAddressTagging {
+		collector.staticTagger = utils.NewStaticAddressTagger(cfg.SmartDNSConfigFile, cfg.StaticAddressTagFrom)
+		log.Printf("静态映射匹配标记已启用，仅处理 %s 之后的新日志", cfg.StaticAddressTagFrom.Format(time.RFC3339))
 	}
 
 	// 加载位置信息
@@ -238,6 +243,10 @@ func (c *LogCollector) readNewLines(ctx context.Context) error {
 	}
 
 	scanner := bufio.NewScanner(file)
+	if c.staticTagger != nil {
+		// 配置不可读时不影响采集，标记器清空旧规则并保留原分组。
+		_ = c.staticTagger.Refresh(time.Now())
+	}
 	lineCount := 0
 	parsedCount := 0
 
@@ -260,6 +269,9 @@ func (c *LogCollector) readNewLines(ctx context.Context) error {
 
 			// 解析日志行
 			if record := c.parser.Parse(line, c.cfg.NodeID); record != nil {
+				if c.staticTagger != nil {
+					c.staticTagger.Tag(record)
+				}
 				parsedCount++
 
 				c.mu.Lock()
