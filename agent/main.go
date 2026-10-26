@@ -21,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const Version = "0.0.5"
+const Version = "0.0.5-static-match.1"
 
 type AgentServer struct {
 	cfg        *config.Config
@@ -135,6 +135,9 @@ func printHelp() {
 	fmt.Println("  NODE_ID                  节点ID")
 	fmt.Println("  NODE_NAME                节点名称")
 	fmt.Println("  LOG_FILE                 SmartDNS日志文件路径")
+	fmt.Println("  STATIC_ADDRESS_TAGGING   启用静态映射匹配标记 (默认: false)")
+	fmt.Println("  SMARTDNS_CONFIG_FILE     本节点 SmartDNS 配置路径")
+	fmt.Println("  STATIC_ADDRESS_TAG_FROM  仅标记此 RFC3339 时间之后的日志")
 	fmt.Println("  CLICKHOUSE_HOST          ClickHouse 主机")
 	fmt.Println("  CLICKHOUSE_PORT          ClickHouse 端口")
 	fmt.Println("  CLICKHOUSE_DB            ClickHouse 数据库")

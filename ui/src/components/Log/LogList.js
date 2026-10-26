@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Table,
   Form,
@@ -27,6 +27,7 @@ import {
 } from "@ant-design/icons";
 import { getDNSLogs, getGroups, getServers } from "../../api";
 import dayjs from "dayjs";
+import StaticMatchTag, { STATIC_MATCH_GROUP } from "./StaticMatchTag";
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -265,6 +266,9 @@ const LogList = ({ nodeId, nodeName }) => {
 
   // 渲染上游分组和服务器信息
   const renderUpstreamInfo = (groupName) => {
+    if (groupName === STATIC_MATCH_GROUP) {
+      return <StaticMatchTag />;
+    }
     if (!groupName) {
       return <span style={{ color: "#999" }}>-</span>;
     }
@@ -287,6 +291,8 @@ const LogList = ({ nodeId, nodeName }) => {
             </Tag>
           </Tooltip>
 
+          <span style={{ fontSize: 12, color: "#595959" }}>当前配置上游（非实测）</span>
+
           {groupServers.length > 0 ? (
             <div style={{ maxHeight: "80px", overflowY: "auto" }}>
               {groupServers.map((server, index) => {
@@ -296,7 +302,7 @@ const LogList = ({ nodeId, nodeName }) => {
                 return (
                   <Tooltip
                     key={index}
-                    title={`${serverType}: ${server.address}`}
+                    title={`当前配置服务器：${serverType}: ${server.address}；不代表此次查询实际使用的上游`}
                   >
                     <div
                       style={{
@@ -462,10 +468,10 @@ const LogList = ({ nodeId, nodeName }) => {
       ),
     },
     {
-      title: "所属上游",
+      title: "日志分组",
       dataIndex: "group",
       key: "group",
-      width: 180,
+      width: 220,
       render: (groupName) => renderUpstreamInfo(groupName),
     },
     {
@@ -532,11 +538,12 @@ const LogList = ({ nodeId, nodeName }) => {
           <Col xs={24} sm={12} md={6}>
             <Form.Item
               name="group"
-              label="所属上游"
+              label="日志分组"
               style={{ marginBottom: 8 }}
             >
               <Select placeholder="选择分组" allowClear>
-                {groups.map((group) => (
+                <Option value={STATIC_MATCH_GROUP}>静态映射匹配</Option>
+                {groups.filter((group) => group.name !== STATIC_MATCH_GROUP).map((group) => (
                   <Option key={group.id} value={group.name}>
                     <Space>
                       <div

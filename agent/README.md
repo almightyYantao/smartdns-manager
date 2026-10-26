@@ -1,5 +1,37 @@
 # SmartDNS Log Agent
 
+## 静态映射匹配标记（可选）
+
+此功能属于 Manager 的日志采集器，不修改 SmartDNS 程序、DNS 配置、原始审计日志或 ClickHouse 配置/表结构。
+默认关闭；启用后，仅将指定时间之后、A/AAAA 返回 IP 与本节点 `address` 规则一致的新记录的结构化 `group` 写为 `__static_match__`。
+`raw_log` 保留 SmartDNS 原始内容和分组，已入库的历史记录不更新、不回填。页面将该保留标识显示为“静态映射匹配”，并支持筛选。
+
+这是采集时的配置匹配推断，不能证明一次查询没有上游流量，也不用于判断缓存命中。
+HTTPS 等其他查询类型保留原分组；配置缺失、读取失败、晚于日志时间，或存在 `conf-file`、规则组、跳过地址规则等尚未支持的作用范围时，不进行标记。
+目前仅识别普通域名及其子域的直接地址规则；域名集、通配符、CNAME 和 SOA 等复杂规则不推断。
+配置最多每秒读取一次，无需重启 SmartDNS。`__static_match__` 是日志保留值，请勿用作真实 DNS 上游分组名。
+
+在 Agent 的环境文件中配置（启用时间应固定保存，后续重启继续沿用）：
+
+```ini
+STATIC_ADDRESS_TAGGING=true
+SMARTDNS_CONFIG_FILE=/etc/smartdns/smartdns.conf
+STATIC_ADDRESS_TAG_FROM=2026-10-26T12:00:00+08:00
+```
+
+`STATIC_ADDRESS_TAG_FROM` 使用 RFC3339；未指定时以 Agent 进程启动时间为界。示例时间需改为实际启用时间。
+升级前备份 Agent 二进制、环境配置和 `/var/lib/smartdns-agent/position-node-*.json`，仅重启 Agent 服务，并恢复原来的采集启停状态。
+不要重置读取位置或重新导入旧日志。回退时恢复旧二进制和配置，或将 `STATIC_ADDRESS_TAGGING=false` 后重启 Agent；已产生的标记无需清理。
+Docker 部署须把节点配置目录只读挂载到 Agent，并传入上述环境变量。
+
+依赖 Go 1.24 或以上。以下本地校验不连接 DNS、ClickHouse 或生产节点，也不写入业务数据：
+
+```bash
+go test ./...
+go vet ./...
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/smartdns-log-agent-static-match .
+```
+
 [![Author](https://img.shields.io/badge/Author-yantao-blue.svg?style=flat-square)](https://github.com/almightyyantao)
 [![Stars](https://img.shields.io/github/stars/almightyyantao/smartdns-manager?style=flat-square&logo=github)](https://github.com/almightyyantao/smartdns-manager/stargazers)
 
