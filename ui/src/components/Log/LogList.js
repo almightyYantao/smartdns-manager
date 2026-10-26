@@ -22,13 +22,13 @@ import {
   ClockCircleOutlined,
   SyncOutlined,
   PauseOutlined,
-  GlobalOutlined,
-  CloudServerOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import { getDNSLogs, getGroups, getServers } from "../../api";
 import dayjs from "dayjs";
 import StaticMatchTag, { STATIC_MATCH_GROUP } from "./StaticMatchTag";
 import { getConfiguredServers } from "./serverGroups";
+import ConfiguredUpstreams from "./ConfiguredUpstreams";
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -251,138 +251,16 @@ const LogList = ({ nodeId, nodeName }) => {
     return getConfiguredServers(servers, groupName, nodeId);
   };
 
-  // 提取服务器地址的IP部分
-  const extractServerIP = (address) => {
-    if (!address) return "";
-
-    let cleanAddress = address;
-    cleanAddress = cleanAddress.replace(/^(https?|tls):\/\//, "");
-    cleanAddress = cleanAddress.split("/")[0];
-    cleanAddress = cleanAddress.split(":")[0];
-
-    return cleanAddress;
-  };
-
-  // 渲染上游分组和服务器信息
+  // 行内只展示分组和数量，服务器明细按需展开。
   const renderUpstreamInfo = (groupName) => {
-    if (groupName === STATIC_MATCH_GROUP) {
-      return <StaticMatchTag />;
-    }
-    if (!groupName) {
-      return <span style={{ color: "#999" }}>-</span>;
-    }
-
-    const groupConfig = groups.find((g) => g.name === groupName);
-    const groupColor = groupConfig?.color || "#1890ff";
-    const groupDescription = groupConfig?.description;
-    const groupServers = getServersByGroup(groupName);
-
+    if (groupName === STATIC_MATCH_GROUP) return <StaticMatchTag />;
+    if (!groupName) return <span style={{ color: "#595959" }}>-</span>;
     return (
-      <div style={{ minWidth: 160 }}>
-        <Space direction="vertical" size={4}>
-          <Tooltip title={groupDescription || `分组: ${groupName}`}>
-            <Tag
-              color={groupColor}
-              icon={<GlobalOutlined />}
-              style={{ margin: 0, fontSize: "11px", fontWeight: "bold" }}
-            >
-              {groupName}
-            </Tag>
-          </Tooltip>
-
-          <span style={{ fontSize: 12, color: "#595959" }}>当前配置上游（非实测）</span>
-
-          {groupServers.length > 0 ? (
-            <div style={{ maxHeight: "80px", overflowY: "auto" }}>
-              {groupServers.map((server, index) => {
-                const serverIP = extractServerIP(server.address);
-                const serverType = server.type?.toUpperCase() || "UDP";
-
-                return (
-                  <Tooltip
-                    key={index}
-                    title={`当前配置服务器：${serverType}: ${server.address}；不代表此次查询实际使用的上游`}
-                  >
-                    <div
-                      style={{
-                        fontSize: "10px",
-                        color: "#666",
-                        fontFamily: "monospace",
-                        background: "#f8f9fa",
-                        padding: "2px 6px",
-                        margin: "1px 0",
-                        borderRadius: "3px",
-                        border: "1px solid #e9ecef",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
-                    >
-                      <CloudServerOutlined
-                        style={{ fontSize: "8px", color: "#999" }}
-                      />
-                      <span
-                        style={{
-                          flex: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {serverIP}
-                      </span>
-                      <Tag
-                        color={
-                          server.type === "https"
-                            ? "green"
-                            : server.type === "tls"
-                            ? "blue"
-                            : server.type === "tcp"
-                            ? "orange"
-                            : "default"
-                        }
-                        style={{
-                          fontSize: "8px",
-                          margin: 0,
-                          padding: "0 3px",
-                          lineHeight: "12px",
-                          minWidth: "auto",
-                        }}
-                      >
-                        {serverType}
-                      </Tag>
-                    </div>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          ) : (
-            <div
-              style={{
-                fontSize: "10px",
-                color: "#999",
-                fontStyle: "italic",
-                padding: "2px 0",
-              }}
-            >
-              无配置服务器
-            </div>
-          )}
-
-          {groupServers.length > 0 && (
-            <div
-              style={{
-                fontSize: "9px",
-                color: "#999",
-                textAlign: "center",
-                borderTop: "1px solid #f0f0f0",
-                paddingTop: "2px",
-              }}
-            >
-              共 {groupServers.length} 个服务器
-            </div>
-          )}
-        </Space>
-      </div>
+      <ConfiguredUpstreams
+        groupName={groupName}
+        groupConfig={groups.find((group) => group.name === groupName)}
+        servers={getServersByGroup(groupName)}
+      />
     );
   };
 
@@ -467,7 +345,11 @@ const LogList = ({ nodeId, nodeName }) => {
       ),
     },
     {
-      title: "日志分组",
+      title: (
+        <Tooltip title="上游列表来自当前配置，不代表此次查询实际使用的服务器。点击数量可查看明细。" trigger={["hover", "focus"]}>
+          <span tabIndex={0}>日志分组 <InfoCircleOutlined style={{ color: "#595959" }} /></span>
+        </Tooltip>
+      ),
       dataIndex: "group",
       key: "group",
       width: 220,

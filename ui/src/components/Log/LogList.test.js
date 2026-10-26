@@ -32,11 +32,14 @@ test("入库标记显示静态映射匹配，旧分组与 HTTPS 仍显示配置�
   const staticRow = staticTag.closest("tr");
   expect(within(staticRow).queryByText("192.0.2.136")).not.toBeInTheDocument();
   expect(within(staticRow).queryByText("oversea")).not.toBeInTheDocument();
-  const server = await screen.findByText("192.0.2.136");
-  const upstreamRow = server.closest("tr");
+  const detailButton = await screen.findByRole("button", { name: "oversea：查看 1 个配置上游" });
+  const upstreamRow = detailButton.closest("tr");
   expect(within(upstreamRow).getByText("HTTPS")).toBeInTheDocument();
   expect(within(upstreamRow).getByText("oversea")).toBeInTheDocument();
-  expect(within(upstreamRow).getByText("当前配置上游（非实测）")).toBeInTheDocument();
+  expect(screen.queryByText("192.0.2.136")).not.toBeInTheDocument();
+  fireEvent.click(detailButton);
+  expect(await screen.findByText("192.0.2.136")).toBeInTheDocument();
+  expect(screen.getByText("配置列表不代表此次查询的实际响应来源。")).toBeInTheDocument();
   expect(screen.queryByText("所属上游")).not.toBeInTheDocument();
 });
 
@@ -67,10 +70,13 @@ test("默认组展示隐式成员，并排除禁用、其他节点和显式排�
   ] } });
   render(<LogList nodeId={1} />);
   const row = (await screen.findByText("www.example.org")).closest("tr");
-  await waitFor(() => expect(within(row).getByText("192.0.2.29")).toBeInTheDocument());
-  expect(within(row).getByText("192.0.2.30")).toBeInTheDocument();
+  const detailButton = await within(row).findByRole("button", { name: "default：查看 2 个配置上游" });
+  expect(screen.queryByText("192.0.2.29")).not.toBeInTheDocument();
+  fireEvent.click(detailButton);
+  expect(await screen.findByText("192.0.2.29")).toBeInTheDocument();
+  expect(screen.getByText("192.0.2.30")).toBeInTheDocument();
   for (const ip of ["192.0.2.136", "192.0.2.31", "192.0.2.32", "192.0.2.33"]) {
-    expect(within(row).queryByText(ip)).not.toBeInTheDocument();
+    expect(screen.queryByText(ip)).not.toBeInTheDocument();
   }
   expect(within(row).queryByText("无配置服务器")).not.toBeInTheDocument();
 });
