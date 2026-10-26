@@ -28,6 +28,7 @@ import {
 import { getDNSLogs, getGroups, getServers } from "../../api";
 import dayjs from "dayjs";
 import StaticMatchTag, { STATIC_MATCH_GROUP } from "./StaticMatchTag";
+import { getConfiguredServers } from "./serverGroups";
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -245,11 +246,9 @@ const LogList = ({ nodeId, nodeName }) => {
     return <Tag color={config.color}>{config.text}</Tag>;
   };
 
-  // 根据分组名称获取对应的服务器列表
+  // 根据隐式默认组、节点范围及启用状态获取当前配置服务器。
   const getServersByGroup = (groupName) => {
-    return servers.filter(
-      (server) => server.groups && server.groups.includes(groupName)
-    );
+    return getConfiguredServers(servers, groupName, nodeId);
   };
 
   // 提取服务器地址的IP部分
@@ -543,7 +542,8 @@ const LogList = ({ nodeId, nodeName }) => {
             >
               <Select placeholder="选择分组" allowClear>
                 <Option value={STATIC_MATCH_GROUP}>静态映射匹配</Option>
-                {groups.filter((group) => group.name !== STATIC_MATCH_GROUP).map((group) => (
+                <Option value="default">default（默认组）</Option>
+                {groups.filter((group) => group.name !== STATIC_MATCH_GROUP && group.name !== "default").map((group) => (
                   <Option key={group.id} value={group.name}>
                     <Space>
                       <div
