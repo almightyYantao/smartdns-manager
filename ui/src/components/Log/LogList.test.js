@@ -45,8 +45,32 @@ test("特殊分组可作为原有接口的筛选值提交", async () => {
   await screen.findByText("静态映射匹配");
   fireEvent.mouseDown(screen.getByLabelText("日志分组"));
   await screen.findByRole("option", { name: "静态映射匹配" });
+  expect(screen.getByRole("option", { name: "default（默认组）" })).toBeInTheDocument();
   // Select 的虚拟无障碍选项不处理点击，选择实际显示的选项。
   fireEvent.click(screen.getByTitle("静态映射匹配"));
   fireEvent.click(screen.getByRole("button", { name: /搜\s*索/ }));
   await waitFor(() => expect(getDNSLogs).toHaveBeenLastCalledWith(expect.objectContaining({ group: "__static_match__" })));
+});
+
+test("默认组展示隐式成员，并排除禁用、其他节点和显式排除的服务器", async () => {
+  getServers.mockResolvedValue({ data: [
+    { id: 1, address: "192.0.2.29", groups: ["cn"], enabled: true, node_ids: "[1]" },
+    { id: 2, address: "192.0.2.30", groups: [], enabled: true, node_ids: "[]" },
+    { id: 3, address: "192.0.2.136", groups: ["oversea"], enabled: true, exclude_default: true },
+    { id: 4, address: "192.0.2.31", groups: ["cn"], enabled: false },
+    { id: 5, address: "192.0.2.32", groups: ["cn"], enabled: true, node_ids: "[2]" },
+    { id: 6, address: "192.0.2.33", groups: ["cn"], enabled: true, options: "-exclude-default-group" },
+  ] });
+  getDNSLogs.mockResolvedValue({ data: { total: 1, logs: [
+    { id: 1, timestamp: "2026-10-26T02:00:00Z", domain: "www.example.org", query_type: 1,
+      client_ip: "192.0.2.1", time_ms: 0, speed_ms: 45.6, group: "default", result: "192.0.2.50", ip_count: 1 },
+  ] } });
+  render(<LogList nodeId={1} />);
+  const row = (await screen.findByText("www.example.org")).closest("tr");
+  await waitFor(() => expect(within(row).getByText("192.0.2.29")).toBeInTheDocument());
+  expect(within(row).getByText("192.0.2.30")).toBeInTheDocument();
+  for (const ip of ["192.0.2.136", "192.0.2.31", "192.0.2.32", "192.0.2.33"]) {
+    expect(within(row).queryByText(ip)).not.toBeInTheDocument();
+  }
+  expect(within(row).queryByText("无配置服务器")).not.toBeInTheDocument();
 });
