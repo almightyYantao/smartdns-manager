@@ -8,13 +8,16 @@ import (
 )
 
 type Config struct {
-	NodeID        uint32           `json:"node_id"`
-	NodeName      string           `json:"node_name"`
-	LogFile       string           `json:"log_file"`
-	BatchSize     int              `json:"batch_size"`
-	FlushInterval time.Duration    `json:"flush_interval"`
-	ClickHouse    ClickHouseConfig `json:"clickhouse"`
-	LogConfig     LogConfig        `json:"log_config"`
+	NodeID               uint32           `json:"node_id"`
+	NodeName             string           `json:"node_name"`
+	LogFile              string           `json:"log_file"`
+	BatchSize            int              `json:"batch_size"`
+	FlushInterval        time.Duration    `json:"flush_interval"`
+	ClickHouse           ClickHouseConfig `json:"clickhouse"`
+	LogConfig            LogConfig        `json:"log_config"`
+	StaticAddressTagging bool             `json:"static_address_tagging"`
+	SmartDNSConfigFile   string           `json:"smartdns_config_file"`
+	StaticAddressTagFrom time.Time        `json:"static_address_tag_from"`
 }
 
 type LogConfig struct {
@@ -41,13 +44,23 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NODE_ID 必须是数字")
 	}
+	tagFrom := time.Now()
+	if value := os.Getenv("STATIC_ADDRESS_TAG_FROM"); value != "" {
+		tagFrom, err = time.Parse(time.RFC3339, value)
+		if err != nil {
+			return nil, fmt.Errorf("STATIC_ADDRESS_TAG_FROM 必须是 RFC3339 时间")
+		}
+	}
 
 	return &Config{
-		NodeID:        uint32(nodeID),
-		NodeName:      getEnv("NODE_NAME", fmt.Sprintf("node-%d", nodeID)),
-		LogFile:       getEnv("LOG_FILE", "/var/log/smartdns/audit.log"),
-		BatchSize:     getEnvInt("BATCH_SIZE", 1000),
-		FlushInterval: time.Duration(getEnvInt("FLUSH_INTERVAL_SEC", 2)) * time.Second,
+		NodeID:               uint32(nodeID),
+		StaticAddressTagging: getEnvBool("STATIC_ADDRESS_TAGGING", false),
+		SmartDNSConfigFile:   getEnv("SMARTDNS_CONFIG_FILE", "/etc/smartdns/smartdns.conf"),
+		StaticAddressTagFrom: tagFrom,
+		NodeName:             getEnv("NODE_NAME", fmt.Sprintf("node-%d", nodeID)),
+		LogFile:              getEnv("LOG_FILE", "/var/log/smartdns/audit.log"),
+		BatchSize:            getEnvInt("BATCH_SIZE", 1000),
+		FlushInterval:        time.Duration(getEnvInt("FLUSH_INTERVAL_SEC", 2)) * time.Second,
 		ClickHouse: ClickHouseConfig{
 			Host:     getEnv("CLICKHOUSE_HOST", "localhost"),
 			Port:     getEnvInt("CLICKHOUSE_PORT", 9000),
