@@ -27,7 +27,7 @@ import {
   restoreNodeBackup,
   getNodes,
 } from '../api';
-import ServerManager from '../components/Config/ServerManager';
+import NodeServerManager from '../components/Config/NodeServerManager';
 import AddressManager from '../components/Config/AddressManager';
 
 const NodeConfig = () => {
@@ -192,15 +192,8 @@ const NodeConfig = () => {
   );
 
   const serversTab = (
-    <Space direction="vertical" style={{ width: '100%' }} size="large">
-      <Alert
-        message="DNS服务器管理"
-        description="管理此节点的上游DNS服务器配置。"
-        type="info"
-        showIcon
-      />
-      <ServerManager />
-    </Space>
+    <NodeServerManager nodeId={id} active={activeTab === 'servers'}
+      onEditConfig={() => setActiveTab('editor')} />
   );
 
   const addressesTab = (

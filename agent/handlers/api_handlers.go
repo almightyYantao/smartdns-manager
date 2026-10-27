@@ -52,7 +52,7 @@ type AgentStats struct {
 	BufferSize     int     `json:"buffer_size"`
 }
 
-const Version = "1.0.0"
+const Version = "1.0.0-static-match.1"
 
 // NewAgentHandler 创建 API 处理器
 func NewAgentHandler(
@@ -222,11 +222,14 @@ func (h *AgentHandler) GetLogs(c *gin.Context) {
 // GetConfig 获取配置信息
 func (h *AgentHandler) GetConfig(c *gin.Context) {
 	config := map[string]interface{}{
-		"node_id":        h.cfg.NodeID,
-		"node_name":      h.cfg.NodeName,
-		"log_file":       h.cfg.LogFile,
-		"batch_size":     h.cfg.BatchSize,
-		"flush_interval": h.cfg.FlushInterval.Seconds(),
+		"node_id":                 h.cfg.NodeID,
+		"node_name":               h.cfg.NodeName,
+		"log_file":                h.cfg.LogFile,
+		"batch_size":              h.cfg.BatchSize,
+		"flush_interval":          h.cfg.FlushInterval.Seconds(),
+		"static_address_tagging":  h.cfg.StaticAddressTagging,
+		"smartdns_config_file":    h.cfg.SmartDNSConfigFile,
+		"static_address_tag_from": h.cfg.StaticAddressTagFrom,
 		"clickhouse": map[string]interface{}{
 			"host":     h.cfg.ClickHouse.Host,
 			"port":     h.cfg.ClickHouse.Port,

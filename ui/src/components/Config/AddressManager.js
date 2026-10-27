@@ -14,6 +14,7 @@ import {
   Switch,
   Badge,
   Tooltip,
+  Alert,
 } from "antd";
 import {
   PlusOutlined,
@@ -40,6 +41,18 @@ import dayjs from "dayjs";
 import SyncStatus from "./SyncStatus";
 
 const { Option } = Select;
+
+const restartReminder =
+  "同步完成后，请到“节点管理”逐台重启对应的 SmartDNS 服务，使配置生效。";
+
+const applyNotice = (
+  <Alert
+    type="warning"
+    showIcon
+    message="保存后仍需手动重启 SmartDNS"
+    description={`保存会同步配置到应用节点，但不会自动重启服务。${restartReminder}`}
+  />
+);
 
 const AddressManager = () => {
   const [addresses, setAddresses] = useState([]);
@@ -111,7 +124,10 @@ const AddressManager = () => {
   const handleDelete = async (id) => {
     try {
       await deleteAddress(id);
-      message.success("删除成功，正在从节点移除...");
+      message.success({
+        content: `已删除，正在从节点移除配置。${restartReminder}`,
+        duration: 8,
+      });
       loadAddresses();
     } catch (error) {
       message.error("删除失败");
@@ -131,10 +147,16 @@ const AddressManager = () => {
 
       if (editingAddress) {
         await updateAddress(editingAddress.id, values);
-        message.success("更新成功，正在同步到节点...");
+        message.success({
+          content: `已保存，正在同步到节点。${restartReminder}`,
+          duration: 8,
+        });
       } else {
         await addAddress(values);
-        message.success("添加成功，正在同步到节点...");
+        message.success({
+          content: `已添加，正在同步到节点。${restartReminder}`,
+          duration: 8,
+        });
       }
 
       setModalVisible(false);
@@ -172,9 +194,10 @@ const AddressManager = () => {
         node_ids: nodeIds,
       });
 
-      message.success(
-        `成功添加 ${addresses.length} 条地址映射，正在同步到节点...`
-      );
+      message.success({
+        content: `已添加 ${addresses.length} 条地址映射，正在同步到节点。${restartReminder}`,
+        duration: 8,
+      });
       setBatchModalVisible(false);
       loadAddresses();
     } catch (error) {
@@ -188,7 +211,10 @@ const AddressManager = () => {
       try {
         const content = e.target.result;
         await importAddresses({ content, format: "smartdns" });
-        message.success("导入成功，正在同步到节点...");
+        message.success({
+          content: `已导入，正在同步到节点。${restartReminder}`,
+          duration: 8,
+        });
         loadAddresses();
       } catch (error) {
         message.error("导入失败");
@@ -216,7 +242,11 @@ const AddressManager = () => {
     try {
       message.loading({ content: "正在同步配置到节点...", key: "sync" });
       await triggerFullSync(nodeId);
-      message.success({ content: "同步任务已启动", key: "sync" });
+      message.success({
+        content: `同步任务已启动。${restartReminder}`,
+        duration: 8,
+        key: "sync",
+      });
     } catch (error) {
       message.error({ content: "同步失败", key: "sync" });
     }
@@ -235,7 +265,11 @@ const AddressManager = () => {
         try {
           message.loading({ content: "正在批量同步...", key: "batchSync" });
           await batchFullSync({ node_ids: selectedRowKeys });
-          message.success({ content: "批量同步任务已启动", key: "batchSync" });
+          message.success({
+            content: `批量同步任务已启动。${restartReminder}`,
+            duration: 8,
+            key: "batchSync",
+          });
           setSelectedRowKeys([]);
         } catch (error) {
           message.error({ content: "批量同步失败", key: "batchSync" });
@@ -404,6 +438,13 @@ const AddressManager = () => {
 
   return (
     <div>
+      <Alert
+        type="info"
+        showIcon
+        message="配置同步不会自动重启 SmartDNS"
+        description={restartReminder}
+        style={{ marginBottom: 16 }}
+      />
       <div
         style={{
           marginBottom: 16,
@@ -597,6 +638,7 @@ const AddressManager = () => {
             <Input.TextArea rows={3} placeholder="可选的备注信息" />
           </Form.Item>
         </Form>
+        {applyNotice}
       </Modal>
 
       {/* 批量添加 Modal */}
@@ -643,6 +685,7 @@ cdn.example.com cname cdn.cloudflare.com`}
             />
           </Form.Item>
         </Form>
+        {applyNotice}
       </Modal>
 
       {/* 同步状态 Modal */}
