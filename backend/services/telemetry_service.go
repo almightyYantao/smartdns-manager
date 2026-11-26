@@ -59,7 +59,7 @@ func NewTelemetryService(db *gorm.DB, config *config.Config) (*TelemetryService,
 func (s *TelemetryService) CheckTargets(ctx context.Context, config models.TelemetryConfig) (string, error) {
 	// 获取要检查的目标
 	var targets []models.TelemetryTarget
-	query := s.db.Where("enabled = ?", true)
+	query := s.db.Where("enabled = ? AND type <> ?", true, "dns")
 	
 	if len(config.Targets) > 0 {
 		query = query.Where("id IN ?", config.Targets)
@@ -147,6 +147,28 @@ func (s *TelemetryService) CheckSingleTarget(ctx context.Context, target models.
 		CheckedAt: time.Now(),
 	}
 	
+	if target.Type == "dns" {
+		if err := ValidateDNSProbe(target); err != nil {
+			result.Error = err.Error()
+			return result, err
+		}
+		timeout := time.Duration(target.Timeout) * time.Millisecond
+		if timeout <= 0 || timeout > 5*time.Second {
+			timeout = 2*time.Second
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		start := time.Now()
+		response, err := probeDNS(probeCtx, net.JoinHostPort(strings.TrimSpace(target.Target), "53"), target)
+		result.Response = response
+		result.Latency = time.Since(start).Milliseconds()
+		result.Success = err == nil
+		if err != nil {
+			result.Error = err.Error()
+		}
+		return result, err
+	}
+
 	// 优化超时设置，最小3秒，最大30秒
 	timeout := time.Duration(target.Timeout) * time.Millisecond
 	if timeout == 0 || timeout < 3*time.Second {
@@ -526,7 +548,7 @@ func (s *TelemetryService) cleanupResults(retentionDays int) error {
 	// 先查询将要删除的记录数
 	var countToDelete int64
 	if err := s.db.Model(&models.TelemetryResult{}).
-		Where("created_at < ?", cutoff).
+		Where("created_at < ? AND target_id NOT IN (?)", cutoff, s.db.Unscoped().Model(&models.TelemetryTarget{}).Select("id").Where("type = ?", "dns")).
 		Count(&countToDelete).Error; err != nil {
 		return fmt.Errorf("查询待删除记录数失败: %w", err)
 	}
@@ -537,7 +559,7 @@ func (s *TelemetryService) cleanupResults(retentionDays int) error {
 	}
 	
 	// 执行删除
-	result := s.db.Where("created_at < ?", cutoff).Delete(&models.TelemetryResult{})
+	result := s.db.Where("created_at < ? AND target_id NOT IN (?)", cutoff, s.db.Unscoped().Model(&models.TelemetryTarget{}).Select("id").Where("type = ?", "dns")).Delete(&models.TelemetryResult{})
 	if result.Error != nil {
 		return fmt.Errorf("删除过期记录失败: %w", result.Error)
 	}

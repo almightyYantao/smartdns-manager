@@ -48,6 +48,8 @@ var NotificationEvents = []NotificationEvent{
 		Name:        "配置恢复",
 		Description: "恢复配置备份时触发",
 	},
+	{Key: "dns_probe_failed", Name: "DNS 解析异常", Description: "DNS 拨测连续失败三次"},
+	{Key: "dns_probe_recovered", Name: "DNS 解析恢复", Description: "异常后连续两次查询成功"},
 	{
 		Key:         "test",
 		Name:        "测试消息",

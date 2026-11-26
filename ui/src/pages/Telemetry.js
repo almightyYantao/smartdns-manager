@@ -53,6 +53,13 @@ const { Option } = Select;
 const { TextArea } = Input;
 const { TabPane } = Tabs;
 
+function dnsStatus(target, now) {
+  const checkedAt = Date.parse(target.last_check_at);
+  if (!checkedAt || now - checkedAt > 90000) return { status: "default", text: "无数据" };
+  if (target.dns_alerting || !target.last_status) return { status: "error", text: "异常" };
+  return { status: "success", text: "正常" };
+}
+
 const Telemetry = () => {
   const [targets, setTargets] = useState([]);
   const [results, setResults] = useState([]);
@@ -65,6 +72,8 @@ const Telemetry = () => {
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [testingTargets, setTestingTargets] = useState(new Set());
   const [form] = Form.useForm();
+  const targetType = Form.useWatch("type", form);
+  const [now, setNow] = useState(Date.now);
 
   // 检测类型配置
   const typeOptions = [
@@ -82,6 +91,11 @@ const Telemetry = () => {
       value: "https",
       label: "HTTPS检测",
       description: "HTTPS协议检测，默认端口443",
+    },
+    {
+      value: "dns",
+      label: "DNS 拨测",
+      description: "由控制台后端直接查询指定服务器的 UDP/53",
     },
     {
       value: "tcp",
@@ -133,18 +147,22 @@ const Telemetry = () => {
     fetchTargets();
     fetchStats();
     fetchResults();
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      fetchTargets(false);
+    }, 15000);
+    return () => clearInterval(timer);
   }, []);
 
-  const fetchTargets = async () => {
-    setLoading(true);
+  const fetchTargets = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const response = await getTelemetryTargets();
       setTargets(response.data || []);
     } catch (error) {
-      message.error("获取遥测目标失败");
-      setTargets([]);
+      if (showLoading) message.error("获取遥测目标失败");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -186,6 +204,7 @@ const Telemetry = () => {
   const handleEditTarget = (target) => {
     setEditingTarget(target);
     setModalVisible(true);
+    form.resetFields();
     form.setFieldsValue(target);
   };
 
@@ -212,7 +231,7 @@ const Telemetry = () => {
       const result = response.data;
 
       if (result.success) {
-        message.success(`测试成功！延迟: ${result.latency}ms`);
+        message.success(`测试成功 · ${result.latency}ms${result.response ? ` · ${result.response}` : ""}`);
       } else {
         message.error(`测试失败: ${result.error || "未知错误"}`);
       }
@@ -269,7 +288,7 @@ const Telemetry = () => {
       fetchTargets();
       fetchStats();
     } catch (error) {
-      message.error(editingTarget ? "更新失败" : "创建失败");
+      message.error(error.response?.data?.message || (editingTarget ? "更新失败" : "创建失败"));
     }
   };
 
@@ -297,6 +316,7 @@ const Telemetry = () => {
       http: "#1890ff",
       https: "#722ed1",
       tcp: "#fa8c16",
+      dns: "#13a8a8",
     };
     return colors[type] || "#666";
   };
@@ -325,7 +345,14 @@ const Telemetry = () => {
       title: "目标地址",
       dataIndex: "target",
       key: "target",
-      render: (text) => <code>{text}</code>,
+      render: (text, record) => (
+        <Space direction="vertical" size={0}>
+          <code>{text}{record.type === "dns" ? " · UDP/53" : ""}</code>
+          {record.type === "dns" && (
+            <Text type="secondary">{record.dns_name} → {record.dns_expected_a}</Text>
+          )}
+        </Space>
+      ),
     },
     {
       title: "超时设置",
@@ -347,7 +374,8 @@ const Telemetry = () => {
             status={record.enabled ? "success" : "default"}
             text={record.enabled ? "启用" : "禁用"}
           />
-          {record.last_check_at && (
+          {record.type === "dns" && record.enabled && <Badge {...dnsStatus(record, now)} />}
+          {record.type !== "dns" && record.last_check_at && (
             <Badge
               status={record.last_status ? "success" : "error"}
               text={record.last_status ? "正常" : "异常"}
@@ -369,6 +397,9 @@ const Telemetry = () => {
               成功率:{" "}
               {((record.success_count / record.check_count) * 100).toFixed(1)}%
             </Text>
+          )}
+          {record.type === "dns" && record.dns_last_success && (
+            <Text type="secondary">最近成功 {new Date(record.dns_last_success).toLocaleString()}</Text>
           )}
           {record.last_check_at && (
             <Text type="secondary">
@@ -579,7 +610,13 @@ const Telemetry = () => {
                 label="检测类型"
                 rules={[{ required: true, message: "请选择检测类型" }]}
               >
-                <Select placeholder="请选择检测类型">
+                <Select
+                  placeholder="请选择检测类型"
+                  onChange={(type) => {
+                    const timeout = form.getFieldValue("timeout");
+                    if (type === "dns" && (!timeout || timeout > 5000)) form.setFieldValue("timeout", 2000);
+                  }}
+                >
                   {typeOptions.map((option) => (
                     <Option key={option.value} value={option.value}>
                       <span>{option.label}</span>
@@ -596,22 +633,34 @@ const Telemetry = () => {
 
               <Form.Item
                 name="target"
-                label="目标地址"
+                label={targetType === "dns" ? "DNS 服务器 IP" : "目标地址"}
                 rules={[{ required: true, message: "请输入目标地址" }]}
-                extra="根据检测类型填写相应格式的地址"
+                extra={targetType === "dns" ? "固定使用 UDP/53" : "根据检测类型填写相应格式的地址"}
               >
-                <Input placeholder="例如: 8.8.8.8 或 baidu.com 或 192.168.1.1:80" />
+                <Input placeholder={targetType === "dns" ? "例如 192.0.2.53" : "例如 8.8.8.8 或 baidu.com 或 192.168.1.1:80"} />
               </Form.Item>
+
+              {targetType === "dns" && (
+                <>
+                  <Form.Item name="dns_name" label="查询域名" rules={[{ required: true, whitespace: true, message: "请输入查询域名" }]}>
+                    <Input placeholder="例如 example.com" />
+                  </Form.Item>
+                  <Form.Item name="dns_expected_a" label="预期 A 记录" rules={[{ required: true, whitespace: true, message: "请输入预期 IPv4 地址" }]}>
+                    <Input placeholder="例如 192.0.2.10" />
+                  </Form.Item>
+                  <Text type="secondary">启用后每 30 秒查询。连续失败 3 次告警，连续成功 2 次恢复。</Text>
+                </>
+              )}
 
               <Form.Item
                 name="timeout"
                 label="超时时间 (毫秒)"
                 rules={[{ required: true, message: "请输入超时时间" }]}
-                extra="建议范围：1000-60000毫秒"
+                extra={targetType === "dns" ? "范围 1000–5000 毫秒" : "建议范围 1000–60000 毫秒"}
               >
                 <InputNumber
                   min={1000}
-                  max={60000}
+                  max={targetType === "dns" ? 5000 : 60000}
                   step={1000}
                   style={{ width: "100%" }}
                   placeholder="10000"
@@ -713,7 +762,9 @@ const Telemetry = () => {
                 : "未检测"}
             </Descriptions.Item>
             <Descriptions.Item label="最后状态">
-              {selectedTarget.last_status !== undefined ? (
+              {selectedTarget.type === "dns" ? (
+                <Badge {...dnsStatus(targets.find((target) => target.id === selectedTarget.id) || selectedTarget, now)} />
+              ) : selectedTarget.last_check_at ? (
                 <Badge
                   status={selectedTarget.last_status ? "success" : "error"}
                   text={selectedTarget.last_status ? "正常" : "异常"}

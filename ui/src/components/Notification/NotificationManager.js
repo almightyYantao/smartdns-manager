@@ -61,6 +61,8 @@ const NotificationManager = () => {
     { value: 'sync_failed', label: '同步失败', color: 'red' },
     { value: 'node_online', label: '节点上线', color: 'cyan' },
     { value: 'node_offline', label: '节点离线', color: 'orange' },
+    { value: 'dns_probe_failed', label: 'DNS 解析异常', color: 'red' },
+    { value: 'dns_probe_recovered', label: 'DNS 解析恢复', color: 'green' },
     { value: 'service_restart', label: '服务重启', color: 'purple' },
     { value: 'config_backup', label: '配置备份', color: 'geekblue' },
     { value: 'config_restore', label: '配置恢复', color: 'magenta' },

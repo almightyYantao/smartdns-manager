@@ -127,6 +127,13 @@ func (s *SchedulerService) Stop() {
 
 // loadTasks 加载所有启用的任务
 func (s *SchedulerService) loadTasks() error {
+	if _, err := s.cron.AddJob("@every " + DNSProbeInterval.String(), cron.SkipIfStillRunning(cron.DefaultLogger)(cron.FuncJob(s.telemetry.checkDNSTargets))); err != nil {
+		return err
+	}
+	if _, err := s.cron.AddFunc("0 0 3 * * *", s.telemetry.pruneDNSResults); err != nil {
+		return err
+	}
+
 	var tasks []models.ScheduledTask
 	if err := s.db.Where("enabled = ?", true).Find(&tasks).Error; err != nil {
 		return fmt.Errorf("查询任务失败: %w", err)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+ "strings"
 	"time"
 
 	"smartdns-manager/models"
@@ -382,19 +383,62 @@ func (h *SchedulerHandler) GetTelemetryTargets(c *gin.Context) {
 	})
 }
 
+type telemetryTargetInput struct {
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	Target       string `json:"target"`
+	Timeout      int    `json:"timeout"`
+	Enabled      *bool  `json:"enabled"`
+	Description  string `json:"description"`
+	DNSName      string `json:"dns_name"`
+	DNSExpectedA string `json:"dns_expected_a"`
+}
+
+func (input telemetryTargetInput) apply(target *models.TelemetryTarget) error {
+	target.Name, target.Type, target.Target = input.Name, input.Type, input.Target
+	target.Timeout, target.Description = input.Timeout, input.Description
+	if input.Enabled != nil {
+		target.Enabled = *input.Enabled
+	}
+	if target.Type != "dns" {
+		target.DNSName, target.DNSExpectedA = "", ""
+		return nil
+	}
+	target.Target = strings.TrimSpace(input.Target)
+	target.DNSName = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(input.DNSName), "."))
+	target.DNSExpectedA = strings.TrimSpace(input.DNSExpectedA)
+	if target.Timeout == 0 {
+		target.Timeout = 2000
+	}
+	if target.Timeout < 1000 || target.Timeout > 5000 {
+		return fmt.Errorf("DNS 查询超时须在 1000–5000 毫秒之间")
+	}
+	return services.ValidateDNSProbe(*target)
+}
+
 // CreateTelemetryTarget 创建遥测目标
 func (h *SchedulerHandler) CreateTelemetryTarget(c *gin.Context) {
-	var target models.TelemetryTarget
-	if err := c.ShouldBindJSON(&target); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+	var input telemetryTargetInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "请求参数错误"})
+		return
+	}
+	target := models.TelemetryTarget{Enabled: true}
+	if err := input.apply(&target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
-	if err := h.schedulerService.GetDB().Create(&target).Error; err != nil {
+	enabled := target.Enabled
+	if err := h.schedulerService.GetDB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&target).Error; err != nil {
+			return err
+		}
+		if !enabled {
+			return tx.Model(&target).Update("enabled", false).Error
+		}
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "创建遥测目标失败",
@@ -415,19 +459,32 @@ func (h *SchedulerHandler) CreateTelemetryTarget(c *gin.Context) {
 func (h *SchedulerHandler) UpdateTelemetryTarget(c *gin.Context) {
 	targetID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
-	var target models.TelemetryTarget
-	if err := c.ShouldBindJSON(&target); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "请求参数错误",
-			"error":   err.Error(),
-		})
+	var input telemetryTargetInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "请求参数错误"})
 		return
 	}
-
-	target.ID = uint(targetID)
-
-	if err := h.schedulerService.GetDB().Save(&target).Error; err != nil {
+	db := h.schedulerService.GetDB()
+	var target models.TelemetryTarget
+	if targetID == 0 || db.First(&target, targetID).Error != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "遥测目标不存在"})
+		return
+	}
+	old := target
+	if err := input.apply(&target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+	fields := []string{"Name", "Type", "Target", "Timeout", "Enabled", "Description", "DNSName", "DNSExpectedA"}
+	if old.Type != target.Type || old.Target != target.Target || old.DNSName != target.DNSName || old.DNSExpectedA != target.DNSExpectedA || old.Enabled != target.Enabled {
+		target.DNSAlerting, target.DNSStreak, target.DNSLastSuccess = false, 0, nil
+		if old.Type == "dns" || target.Type == "dns" {
+			target.LastCheckAt, target.LastStatus, target.LastLatency = nil, false, 0
+			target.CheckCount, target.SuccessCount, target.AvgLatency = 0, 0, 0
+			fields = append(fields, "DNSAlerting", "DNSStreak", "DNSLastSuccess", "LastCheckAt", "LastStatus", "LastLatency", "CheckCount", "SuccessCount", "AvgLatency")
+		}
+	}
+	if err := db.Model(&target).Select(fields).Updates(&target).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "更新遥测目标失败",
@@ -605,7 +662,11 @@ func (h *SchedulerHandler) TestTelemetryTarget(c *gin.Context) {
 	// 执行真实的网络检测
 	ctx := c.Request.Context()
 	result, err := telemetryService.CheckSingleTarget(ctx, target)
-	
+	if target.Type == "dns" {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "data": result, "success": true})
+		return
+	}
+
 	if err != nil {
 		// 即使检测失败，也要保存结果
 		if result == nil {
