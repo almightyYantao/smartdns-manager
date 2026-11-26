@@ -15,6 +15,8 @@ func parseExpectedIPv4(value string) (string, error) {
 	return addr.String(), nil
 }
 
+const supportedCorePaths = `/usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns|/usr/local/lib/smartdns/smartdns`
+
 // 相对路径的 ELF 解释器由进程启动时的工作目录解析。
 const coreRunningVersion = `running_core_version() (
  if output=$(cd "$1/cwd" && "$1/exe" -v 2>&1); then
@@ -38,7 +40,7 @@ const coreRunningVersion = `running_core_version() (
  esac
  path=$(readlink "$1/exe") || exit 1
  case "$path" in
-  /usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns|/usr/local/lib/smartdns/smartdns) ;;
+  ` + supportedCorePaths + `) ;;
   *) printf '%s\n' "$output" >&2; exit 1;;
  esac
  directory=${path%/*}
@@ -89,7 +91,7 @@ pid=$(running_pid)
 test "$pid" -gt 0
 path=$(readlink "/proc/$pid/exe")
 case "$path" in
- /usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns) ;;
+ ` + supportedCorePaths + `) ;;
  *) echo '当前运行路径不支持自动升级'; exit 1;;
 esac
 [ "$(readlink -f "$path")" = "$path" ] || { echo '当前核心路径包含符号链接'; exit 1; }

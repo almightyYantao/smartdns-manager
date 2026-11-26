@@ -63,6 +63,27 @@ func TestUpgradeInputAndScript(t *testing.T) {
 	}
 }
 
+func TestUpgradeAcceptsPackagedCorePath(t *testing.T) {
+	_, guard, ok := strings.Cut(coreUpgradeScript, "\ncase \"$path\" in\n")
+	if !ok {
+		t.Fatal("升级脚本缺少核心路径检查")
+	}
+	guard, _, ok = strings.Cut(guard, "\nesac\n")
+	if !ok {
+		t.Fatal("升级脚本的核心路径检查不完整")
+	}
+	for path, allowed := range map[string]bool{
+		"/usr/local/lib/smartdns/smartdns": true,
+		"/usr/sbin/smartdns":               true,
+		"/tmp/smartdns":                    false,
+	} {
+		cmd := exec.Command("sh", "-c", "path=$1\ncase \"$path\" in\n"+guard+"\nesac", "sh", path)
+		if out, err := cmd.CombinedOutput(); (err == nil) != allowed {
+			t.Errorf("路径 %s，预期允许=%t，实际输出 %q，错误 %v", path, allowed, out, err)
+		}
+	}
+}
+
 func TestCoreMirrorAndDigest(t *testing.T) {
 	source := CoreSource{"https://mirror.example.com/latest.json", "https://mirror.example.com/smartdns"}
 	if err := source.validate(); err != nil {
