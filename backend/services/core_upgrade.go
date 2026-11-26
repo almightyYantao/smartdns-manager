@@ -38,7 +38,7 @@ const coreRunningVersion = `running_core_version() (
  esac
  path=$(readlink "$1/exe") || exit 1
  case "$path" in
-  /usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns) ;;
+  /usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns|/usr/local/lib/smartdns/smartdns) ;;
   *) printf '%s\n' "$output" >&2; exit 1;;
  esac
  directory=${path%/*}

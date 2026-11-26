@@ -159,6 +159,38 @@ echo 'smartdns (Release48.4)'
 	}
 }
 
+func TestRunningCoreVersionUsesPackagedCoreDirectory(t *testing.T) {
+	process := t.TempDir()
+	prefix := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(process, "cwd"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(prefix, "lib", "smartdns"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(prefix, "lib", "smartdns", "smartdns")
+	script := `#!/bin/sh
+if [ "$PWD" != "$expected_prefix/lib/smartdns" ]; then
+ echo 'bad ELF interpreter' >&2
+ exit 126
+fi
+echo 'smartdns (Release48.4)'
+`
+	if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(path, filepath.Join(process, "exe")); err != nil {
+		t.Fatal(err)
+	}
+	// 测试使用临时安装目录替代生产白名单路径。
+	function := strings.Replace(coreRunningVersion, "/usr/local/lib/smartdns/smartdns", `"$expected_prefix/lib/smartdns/smartdns"`, 1)
+	cmd := exec.Command("sh", "-c", function+`running_core_version "$1"`, "sh", process)
+	cmd.Env = append(os.Environ(), "expected_prefix="+prefix)
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "smartdns (Release48.4)" {
+		t.Fatalf("安装目录回退失败 %q: %v", out, err)
+	}
+}
+
 func TestRunningCoreVersionChecksPathBinaryDigest(t *testing.T) {
 	for _, sameBinary := range []bool{true, false} {
 		t.Run(fmt.Sprintf("sameBinary=%t", sameBinary), func(t *testing.T) {
