@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Card,
   Tabs,
@@ -19,12 +19,40 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons';
 import { getUserInfo } from '../utils/auth';
+import request from '../utils/request';
 import DatabaseBackupManager from '../components/Backup/DatabaseBackupManager';
 
 const Settings = () => {
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
   const userInfo = getUserInfo();
+  const [coreSourceForm] = Form.useForm();
+  const [coreSourceReady, setCoreSourceReady] = useState(false);
+  const [savingCoreSource, setSavingCoreSource] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    request.get('/settings/core-source').then(({ data }) => {
+      if (active) {
+        coreSourceForm.setFieldsValue(data);
+        setCoreSourceReady(true);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [coreSourceForm]);
+
+  const saveCoreSource = async (values) => {
+    setSavingCoreSource(true);
+    try {
+      const { data } = await request.put('/settings/core-source', values);
+      message.success(`发布源校验通过并已保存 · ${data}`);
+    } catch (error) {
+      message.error(error.response?.data?.message || error.message);
+    } finally {
+      setSavingCoreSource(false);
+    }
+  };
+
 
   const handleUpdateProfile = async (values) => {
     try {
@@ -146,6 +174,22 @@ const Settings = () => {
   const systemTab = (
     <Card>
       <Space direction="vertical" style={{ width: '100%' }} size="large">
+        <Card title="SmartDNS 核心发布源" size="small">
+          <Form form={coreSourceForm} layout="vertical" onFinish={saveCoreSource}
+            disabled={!coreSourceReady || savingCoreSource}>
+            <Form.Item name="metadata_url" label="版本元数据地址"
+              extra="兼容 GitHub Releases 的 JSON 地址，提供稳定版标签和资产 SHA-256。请选择可信来源。"
+              rules={[{ required: true, message: '请输入版本元数据地址' }]}>
+              <Input placeholder="https://api.github.com/repos/pymumu/smartdns/releases/latest" />
+            </Form.Item>
+            <Form.Item name="asset_base_url" label="升级包下载目录"
+              extra="控制台会在目录后追加 /发行标签/资产名，并将校验通过的升级包通过 SSH 传给节点。"
+              rules={[{ required: true, message: '请输入升级包下载目录' }]}>
+              <Input placeholder="https://github.com/pymumu/smartdns/releases/download" />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" loading={savingCoreSource}>验证并保存</Button>
+          </Form>
+        </Card>
         <div>
           <div style={{ marginBottom: 16 }}>
             <strong>关于系统</strong>

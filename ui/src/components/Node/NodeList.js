@@ -11,6 +11,9 @@ import {
   Badge,
   Dropdown,
   Card,
+  Form,
+  Input,
+  Alert,
 } from "antd";
 import {
   PlusOutlined,
@@ -32,6 +35,8 @@ import {
   deleteNode,
   testNodeConnection,
   getNodeStatus,
+  getNodeCoreVersions,
+  upgradeNodeCore,
   triggerFullSync,
 } from "../../api";
 import NodeForm from "./NodeForm";
@@ -53,6 +58,46 @@ const NodeList = () => {
   const [selectedSyncNode, setSelectedSyncNode] = useState(null);
   const [initModalVisible, setInitModalVisible] = useState(false);
   const [selectedInitNode, setSelectedInitNode] = useState(null);
+  const [coreVersions, setCoreVersions] = useState({});
+  const [checkingCores, setCheckingCores] = useState(false);
+  const [coreNode, setCoreNode] = useState(null);
+  const [upgradingCore, setUpgradingCore] = useState(false);
+  const [coreResult, setCoreResult] = useState(null);
+  const [coreForm] = Form.useForm();
+
+  const checkCoreVersions = async () => {
+    setCheckingCores(true);
+    setCoreVersions({});
+    try {
+      const response = await getNodeCoreVersions();
+      setCoreVersions(response.data || {});
+    } finally {
+      setCheckingCores(false);
+    }
+  };
+
+  const openCoreUpgrade = (node) => {
+    coreForm.resetFields();
+    setCoreResult(null);
+    setCoreNode(node);
+  };
+
+  const submitCoreUpgrade = async (values) => {
+    const selected = coreVersions[coreNode.id];
+    setUpgradingCore(true);
+    try {
+      const response = await upgradeNodeCore(coreNode.id, {
+        ...values, current: selected.tag, target: selected.latest,
+      });
+      setCoreResult({ type: "success", text: response.data });
+    } catch (error) {
+      setCoreResult({ type: "error", text: error.response?.data?.message || error.message });
+    } finally {
+      setUpgradingCore(false);
+      checkCoreVersions().catch(() => {});
+    }
+  };
+
 
   const handleInitNode = (node) => {
     setSelectedInitNode(node);
@@ -264,6 +309,21 @@ const NodeList = () => {
             {texts[status] || status}
           </Tag>
         );
+      },
+    },
+    {
+      title: "SmartDNS 核心",
+      key: "core-version",
+      width: 190,
+      render: (_, node) => {
+        const core = coreVersions[node.id];
+        return <Space direction="vertical" size={2}>
+          {core?.version && <span>{core.tag || core.version}</span>}
+          <Tag color={core?.can_upgrade ? "blue" : "default"}>
+            {core?.state || (checkingCores ? "检测中" : "待检测")}
+          </Tag>
+          {core?.can_upgrade && <Button size="small" onClick={() => openCoreUpgrade(node)}>升级到 {core.latest}</Button>}
+        </Space>;
       },
     },
     {
@@ -508,6 +568,9 @@ const NodeList = () => {
           <Button icon={<ReloadOutlined />} onClick={loadNodes}>
             刷新列表
           </Button>
+          <Button loading={checkingCores} onClick={() => checkCoreVersions().catch(() => {})}>
+            检测版本
+          </Button>
         </Space>
         <Space>
           <span style={{ color: "#666" }}>
@@ -524,13 +587,37 @@ const NodeList = () => {
         dataSource={nodes}
         rowKey="id"
         loading={loading}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1390 }}
         pagination={{
           pageSize: 10,
           showSizeChanger: true,
           showTotal: (total) => `共 ${total} 条记录`,
         }}
       />
+
+      <Modal
+        title="确认单节点升级"
+        open={Boolean(coreNode)}
+        onCancel={() => setCoreNode(null)}
+        onOk={() => coreResult ? setCoreNode(null) : coreForm.submit()}
+        okText={coreResult ? "关闭" : "确认升级并重启"}
+        cancelText="取消"
+        confirmLoading={upgradingCore}
+        closable={!upgradingCore}
+        maskClosable={false}
+        keyboard={!upgradingCore}
+        cancelButtonProps={{ disabled: upgradingCore }}
+      >
+        {coreNode && <p>{coreNode.name} · {coreNode.host}</p>}
+        {coreResult ? <Alert type={coreResult.type} message={coreResult.text} showIcon /> : <>
+          <Alert type="warning" showIcon message={`${coreVersions[coreNode?.id]?.tag || ""} → ${coreVersions[coreNode?.id]?.latest || ""}。升级会重启当前节点，DNS 查询可能短暂中断。`} />
+          <p>使用以下记录验证升级前后的解析。验证失败时会尝试恢复旧版本并重新检查。</p>
+          <Form form={coreForm} layout="vertical" onFinish={submitCoreUpgrade} disabled={upgradingCore}>
+            <Form.Item label="验证域名" name="domain" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item label="预期 A 记录" name="expected_ip" rules={[{ required: true }]}><Input placeholder="IPv4 地址" /></Form.Item>
+          </Form>
+        </>}
+      </Modal>
 
       <Modal
         title={editingNode ? "编辑节点" : "添加节点"}

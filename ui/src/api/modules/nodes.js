@@ -23,3 +23,5 @@ export const checkNodeInit = (id) => request.get(`/nodes/${id}/init/status`);
 export const getInitLogs = (id) => request.get(`/nodes/${id}/init/logs`);
 export const uninstallSmartDNS = (id) => request.post(`/nodes/${id}/uninstall`);
 export const reinstallSmartDNS = (id) => request.post(`/nodes/${id}/reinstall`);
+export const getNodeCoreVersions = () => request.get("/nodes/core-versions");
+export const upgradeNodeCore = (id, data) => request.post(`/nodes/${id}/core-upgrade`, data);

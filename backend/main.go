@@ -125,6 +125,10 @@ func main() {
 		protected.POST("/nodes/:id/config", handlers.SaveNodeConfig)
 		protected.POST("/nodes/:id/restart", handlers.RestartNodeService)
 		protected.GET("/nodes/:id/status", handlers.GetNodeStatus)
+		protected.GET("/nodes/core-versions", handlers.CheckNodeCores)
+		protected.GET("/settings/core-source", handlers.GetCoreSource)
+		protected.PUT("/settings/core-source", handlers.UpdateCoreSource)
+		protected.POST("/nodes/:id/core-upgrade", handlers.UpgradeNodeCore)
 		protected.GET("/nodes/:id/logs", handlers.GetNodeLogs)
 
 		// 批量操作
