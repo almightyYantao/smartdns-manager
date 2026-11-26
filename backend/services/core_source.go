@@ -19,6 +19,7 @@ import (
 )
 
 const maxCoreAsset = 16 << 20
+const coreAssetTimeout = 40 * time.Second
 
 type CoreSource struct {
 	MetadataURL  string `json:"metadata_url"`
@@ -66,7 +67,10 @@ func SaveCoreSource(source CoreSource) error {
 	if err != nil {
 		return err
 	}
-	path := coreSourcePath()
+	return writeCoreFile(coreSourcePath(), data)
+}
+
+func writeCoreFile(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".smartdns-core-source-*")
 	if err != nil {
 		return err

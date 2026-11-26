@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"errors"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -103,6 +106,10 @@ func UpgradeNodeCore(c *gin.Context) {
 }
 
 func getCoreRelease(c *gin.Context) (services.CoreRelease, error) {
+	bundle, err := services.LoadCoreBundle()
+	if !errors.Is(err, os.ErrNotExist) {
+		return bundle, err
+	}
 	source, err := services.LoadCoreSource()
 	if err != nil {
 		return services.CoreRelease{}, err
@@ -116,7 +123,12 @@ func GetCoreSource(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取发布源配置失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": source})
+	bundle, err := services.LoadCoreBundle()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取离线包失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"metadata_url": source.MetadataURL, "asset_base_url": source.AssetBaseURL, "offline_version": bundle.Tag}})
 }
 
 func UpdateCoreSource(c *gin.Context) {
@@ -142,4 +154,37 @@ func UpdateCoreSource(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": release.Tag})
+}
+
+// ImportNodeCoreBundle 只保存升级素材，节点升级仍由管理员单独发起。
+func ImportNodeCoreBundle(c *gin.Context) {
+	if !coreUpgradeLock.TryLock() {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "已有升级或离线包操作正在进行"})
+		return
+	}
+	defer coreUpgradeLock.Unlock()
+	data, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, services.MaxCoreBundle))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无法读取离线包，文件上限为 18 MiB"})
+		return
+	}
+	release, err := services.ImportCoreBundle(data)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": release.Tag})
+}
+
+func UseOnlineCoreSource(c *gin.Context) {
+	if !coreUpgradeLock.TryLock() {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "已有升级或离线包操作正在进行"})
+		return
+	}
+	defer coreUpgradeLock.Unlock()
+	if err := services.RemoveCoreBundle(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "切换发布源失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

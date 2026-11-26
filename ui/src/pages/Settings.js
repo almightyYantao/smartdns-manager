@@ -10,6 +10,7 @@ import {
   Switch,
   Divider,
   Alert,
+  Upload,
 } from 'antd';
 import {
   UserOutlined,
@@ -29,17 +30,49 @@ const Settings = () => {
   const [coreSourceForm] = Form.useForm();
   const [coreSourceReady, setCoreSourceReady] = useState(false);
   const [savingCoreSource, setSavingCoreSource] = useState(false);
+  const [offlineVersion, setOfflineVersion] = useState('');
+  const [bundleBusy, setBundleBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
     request.get('/settings/core-source').then(({ data }) => {
       if (active) {
         coreSourceForm.setFieldsValue(data);
+        setOfflineVersion(data.offline_version || '');
         setCoreSourceReady(true);
       }
     }).catch(() => {});
     return () => { active = false; };
   }, [coreSourceForm]);
+
+  const importCoreBundle = async ({ file, onSuccess, onError }) => {
+    setBundleBusy(true);
+    try {
+      const { data } = await request.post('/settings/core-source/bundle', file, {
+        headers: { 'Content-Type': 'application/zip' },
+      });
+      setOfflineVersion(data);
+      message.success(`已导入 ${data}`);
+      onSuccess();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBundleBusy(false);
+    }
+  };
+
+  const useOnlineCoreSource = async () => {
+    setBundleBusy(true);
+    try {
+      await request.delete('/settings/core-source/bundle');
+      setOfflineVersion('');
+      message.success('已切换到在线发布源');
+    } catch {
+      // 请求层已提示失败原因。
+    } finally {
+      setBundleBusy(false);
+    }
+  };
 
   const saveCoreSource = async (values) => {
     setSavingCoreSource(true);
@@ -175,8 +208,18 @@ const Settings = () => {
     <Card>
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         <Card title="SmartDNS 核心发布源" size="small">
+          <Space wrap style={{ marginBottom: 16 }}>
+            <Upload accept=".zip" showUploadList={false} customRequest={importCoreBundle}
+              disabled={!coreSourceReady || bundleBusy || savingCoreSource}>
+              <Button type="primary" loading={bundleBusy}>上传离线升级包</Button>
+            </Upload>
+            {offlineVersion && <>
+              <span>当前使用离线版本 {offlineVersion}</span>
+              <Button disabled={bundleBusy} onClick={useOnlineCoreSource}>切换到在线发布源</Button>
+            </>}
+          </Space>
           <Form form={coreSourceForm} layout="vertical" onFinish={saveCoreSource}
-            disabled={!coreSourceReady || savingCoreSource}>
+            disabled={!coreSourceReady || savingCoreSource || bundleBusy || Boolean(offlineVersion)}>
             <Form.Item name="metadata_url" label="版本元数据地址"
               extra="兼容 GitHub Releases 的 JSON 地址，提供稳定版标签和资产 SHA-256。请选择可信来源。"
               rules={[{ required: true, message: '请输入版本元数据地址' }]}>

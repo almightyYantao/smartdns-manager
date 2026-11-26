@@ -22,6 +22,7 @@ type CoreRelease struct {
 	Draft      bool   `json:"draft"`
 	Prerelease bool   `json:"prerelease"`
 	baseURL    string
+	offline    bool
 	Assets     []struct {
 		Name   string `json:"name"`
 		Digest string `json:"digest"`
@@ -35,7 +36,11 @@ func (r CoreRelease) asset(arch string) (string, string, bool) {
 	name := "smartdns-" + arch
 	for _, a := range r.Assets {
 		if a.Name == name && coreDigest.MatchString(a.Digest) {
-			return r.baseURL + "/" + r.Tag + "/" + name, strings.TrimPrefix(a.Digest, "sha256:"), true
+			path := r.Tag + "/" + name
+			if !r.offline {
+				path = r.baseURL + "/" + path
+			}
+			return path, strings.TrimPrefix(a.Digest, "sha256:"), true
 		}
 	}
 	return "", "", false
@@ -91,7 +96,7 @@ uname -m
 	case !known:
 		status.State = "版本无法比较"
 	case comparison >= 0:
-		status.State = "已达到稳定版"
+		status.State = "已达到目标版本"
 	case !assetOK:
 		status.State = "缺少可校验的升级包"
 	default:
@@ -111,9 +116,9 @@ func (c *SSHClient) UpgradeCore(ctx context.Context, r CoreRelease, current Core
 	if err != nil {
 		return "", err
 	}
-	data, err := readCoreSource(ctx, download, maxCoreAsset, 40*time.Second)
+	data, err := r.readAsset(ctx, download)
 	if err != nil {
-		return "", fmt.Errorf("控制台下载升级包失败: %w", err)
+		return "", fmt.Errorf("读取升级包失败: %w", err)
 	}
 	if err := verifyCoreAsset(data, digest); err != nil {
 		return "", err
