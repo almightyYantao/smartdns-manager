@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,5 +156,37 @@ echo 'smartdns (Release48.4)'
 	cmd.Env = append(os.Environ(), "expected_prefix="+prefix)
 	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "smartdns (Release48.4)" {
 		t.Fatalf("安装目录回退失败 %q: %v", out, err)
+	}
+}
+
+func TestRunningCoreVersionChecksPathBinaryDigest(t *testing.T) {
+	for _, sameBinary := range []bool{true, false} {
+		t.Run(fmt.Sprintf("sameBinary=%t", sameBinary), func(t *testing.T) {
+			process, bin := t.TempDir(), t.TempDir()
+			if err := os.Mkdir(filepath.Join(process, "cwd"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			contents := "#!/bin/sh\ncase \"$0\" in */exe) echo 'bad ELF interpreter' >&2; exit 126;; esac\necho 'smartdns (Release48.4)'\n"
+			for path, text := range map[string]string{
+				filepath.Join(process, "exe"):  contents,
+				filepath.Join(bin, "smartdns"): contents,
+			} {
+				if !sameBinary && filepath.Base(path) == "smartdns" {
+					text = strings.ReplaceAll(text, "Release48.4", "Release48.5")
+				}
+				if err := os.WriteFile(path, []byte(text), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("sh", "-c", coreRunningVersion+`running_core_version "$1"`, "sh", process)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			out, err := cmd.CombinedOutput()
+			if sameBinary && (err != nil || strings.TrimSpace(string(out)) != "smartdns (Release48.4)") {
+				t.Fatalf("未能通过已校验的路径读取版本 %q: %v", out, err)
+			}
+			if !sameBinary && (err == nil || strings.Contains(string(out), "Release48.5")) {
+				t.Fatalf("采用了不一致的二进制 %q: %v", out, err)
+			}
+		})
 	}
 }

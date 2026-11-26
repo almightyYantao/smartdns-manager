@@ -25,6 +25,17 @@ const coreRunningVersion = `running_core_version() (
   *'bad ELF interpreter'*|*'required file not found'*|*'not found'*) ;;
   *) printf '%s\n' "$output" >&2; exit 1;;
  esac
+ # 按安装路径启动可能需要不同的加载器查找方式，先确认文件与运行中的核心一致。
+ installed=$(command -v smartdns) || installed=
+ case "$installed" in
+  /*)
+   if running_digest=$(sha256sum "$1/exe") && installed_digest=$(sha256sum "$installed") &&
+    [ "${running_digest%% *}" = "${installed_digest%% *}" ] &&
+    version=$("$installed" -v 2>&1); then
+    printf '%s\n' "$version"
+    exit 0
+   fi;;
+ esac
  path=$(readlink "$1/exe") || exit 1
  case "$path" in
   /usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns) ;;
