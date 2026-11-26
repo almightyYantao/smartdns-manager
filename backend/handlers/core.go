@@ -42,7 +42,7 @@ func CheckNodeCores(c *gin.Context) {
 			if err == nil {
 				detected, detectErr := client.DetectCore(release)
 				client.Close()
-				if detectErr == nil {
+				if detectErr == nil || detected.State != "" {
 					status = detected
 				}
 			}

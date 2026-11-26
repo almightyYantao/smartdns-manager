@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"time"
@@ -10,28 +9,17 @@ import (
 	"smartdns-manager/models"
 )
 
-func (s *TelemetryService) checkDNSTargets() {
-	var targets []models.TelemetryTarget
-	if err := s.db.Where("type = ? AND enabled = ?", "dns", true).Find(&targets).Error; err != nil {
-		log.Printf("读取 DNS 拨测目标失败: %v", err)
-		return
+func (s *TelemetryService) saveScheduledDNSResult(target models.TelemetryTarget, result *models.TelemetryResult) error {
+	event, err := s.recordDNSProbe(target, result)
+	if err != nil || event == "" {
+		return err
 	}
-	for _, target := range targets {
-		result, _ := s.CheckSingleTarget(context.Background(), target)
-		event, err := s.recordDNSProbe(target, result)
-		if err != nil {
-			log.Printf("保存 DNS 拨测结果失败 [%d]: %v", target.ID, err)
-		} else if event != "" {
-			title := "DNS 解析异常"
-			if event == "dns_probe_recovered" {
-				title = "DNS 解析恢复"
-			}
-			content := fmt.Sprintf("目标：%s\n探测来源：控制台后端\nDNS：%s（UDP/53）\n域名：%s\n预期：%s\n结果：%s %s", target.Name, target.Target, target.DNSName, target.DNSExpectedA, result.Response, result.Error)
-			if err := NewNotificationService().SendNotification(0, event, title, content); err != nil {
-				log.Printf("DNS 拨测通知失败: %v", err)
-			}
-		}
+	title := "DNS 解析异常"
+	if event == "dns_probe_recovered" {
+		title = "DNS 解析恢复"
 	}
+	content := fmt.Sprintf("目标：%s\n探测来源：控制台后端\nDNS：%s（UDP/53）\n域名：%s\n预期：%s\n结果：%s %s", target.Name, target.Target, target.DNSName, target.DNSExpectedA, result.Response, result.Error)
+	return NewNotificationService().SendNotification(0, event, title, content)
 }
 
 func (s *TelemetryService) recordDNSProbe(target models.TelemetryTarget, result *models.TelemetryResult) (string, error) {

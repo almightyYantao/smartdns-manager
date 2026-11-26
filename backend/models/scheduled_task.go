@@ -180,6 +180,7 @@ type LogCleanupConfig struct {
 
 // TelemetryConfig 遥测任务配置
 type TelemetryConfig struct {
+	IncludeDNS      bool   `json:"include_dns,omitempty"`
 	Targets         []uint `json:"targets"`          // 遥测目标ID列表，空表示所有启用的目标
 	ResultRetention int    `json:"result_retention"` // 结果保留天数
 	AlertThreshold  int    `json:"alert_threshold"`  // 连续失败告警阈值

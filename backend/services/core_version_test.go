@@ -113,12 +113,47 @@ func TestCoreDNSProbeRequiresAnswerOverlap(t *testing.T) {
 name=example.com.
 baseline='192.0.2.1
 192.0.2.2'
-dig() { printf ';; status: %s,\n%s\n' "$probe_status" "$probe_records"; }
+dig() {
+ [ "$1" = @127.0.0.1 ] || return 1
+ printf ';; status: %s,\n%s\n' "$probe_status" "$probe_records"
+}
 probe
 `)
 		cmd.Env = append(os.Environ(), "probe_status="+tc.status, "probe_records="+tc.records)
 		if err := cmd.Run(); (err == nil) != tc.want {
 			t.Fatalf("%+v: %v", tc, err)
 		}
+	}
+}
+
+func TestRunningCoreVersionFallsBackToInstallPrefix(t *testing.T) {
+	process := t.TempDir()
+	prefix := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(process, "cwd"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(prefix, "sbin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(prefix, "sbin", "smartdns")
+	script := `#!/bin/sh
+if [ "$PWD" != "$expected_prefix" ]; then
+ echo 'bad ELF interpreter' >&2
+ exit 126
+fi
+echo 'smartdns (Release48.4)'
+`
+	if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(path, filepath.Join(process, "exe")); err != nil {
+		t.Fatal(err)
+	}
+	// 测试使用临时安装目录替代生产白名单路径。
+	function := strings.Replace(coreRunningVersion, "/usr/sbin/smartdns", `"$expected_prefix/sbin/smartdns"`, 1)
+	cmd := exec.Command("sh", "-c", function+`running_core_version "$1"`, "sh", process)
+	cmd.Env = append(os.Environ(), "expected_prefix="+prefix)
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "smartdns (Release48.4)" {
+		t.Fatalf("安装目录回退失败 %q: %v", out, err)
 	}
 }

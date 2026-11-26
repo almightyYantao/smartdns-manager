@@ -90,6 +90,10 @@ func (s *SchedulerService) Start() error {
 		// 不返回错误，允许系统继续启动
 	}
 
+	if err := s.migrateDNSProbeSchedule(); err != nil {
+		return fmt.Errorf("迁移 DNS 拨测计划失败: %w", err)
+	}
+
 	// 加载并注册所有任务
 	if err := s.loadTasks(); err != nil {
 		return fmt.Errorf("加载任务失败: %w", err)
@@ -112,8 +116,7 @@ func (s *SchedulerService) Stop() {
 	}
 
 	// 停止cron调度器
-	ctx := s.cron.Stop()
-	<-ctx.Done()
+	s.cron.Stop()
 
 	// 取消所有正在执行的任务
 	for taskID, cancel := range s.taskExecs {
@@ -127,9 +130,6 @@ func (s *SchedulerService) Stop() {
 
 // loadTasks 加载所有启用的任务
 func (s *SchedulerService) loadTasks() error {
-	if _, err := s.cron.AddJob("@every " + DNSProbeInterval.String(), cron.SkipIfStillRunning(cron.DefaultLogger)(cron.FuncJob(s.telemetry.checkDNSTargets))); err != nil {
-		return err
-	}
 	if _, err := s.cron.AddFunc("0 0 3 * * *", s.telemetry.pruneDNSResults); err != nil {
 		return err
 	}
@@ -157,23 +157,18 @@ func (s *SchedulerService) loadTasks() error {
 
 // addTaskToCron 添加任务到cron调度器
 func (s *SchedulerService) addTaskToCron(task models.ScheduledTask) error {
-	entryID, err := s.cron.AddFunc(task.CronExpr, func() {
-		s.executeTask(task)
-	})
+	schedule, err := taskScheduleParser.Parse(task.CronExpr)
 	if err != nil {
 		return err
 	}
-
-	// 获取下次执行时间
-	entries := s.cron.Entries()
-	for _, entry := range entries {
-		if entry.ID == entryID {
-			nextRun := entry.Next
-			// 更新任务的下次执行时间
-			s.db.Model(&task).Update("next_run_at", &nextRun)
-			break
+	s.cron.Schedule(schedule, cron.FuncJob(func() {
+		next := schedule.Next(time.Now())
+		pending := s.db.Model(&models.ScheduledTask{}).Where("id = ? AND enabled = ? AND cron_expr = ? AND config = ?", task.ID, true, task.CronExpr, task.Config).UpdateColumn("next_run_at", next)
+		if pending.Error == nil && pending.RowsAffected > 0 {
+			s.executeTask(task)
 		}
-	}
+	}))
+	s.db.Model(&models.ScheduledTask{}).Where("id = ?", task.ID).UpdateColumn("next_run_at", schedule.Next(time.Now()))
 
 	return nil
 }
@@ -373,8 +368,7 @@ func (s *SchedulerService) ReloadTasks() error {
 	}
 
 	// 停止当前调度器
-	ctx := s.cron.Stop()
-	<-ctx.Done()
+	s.cron.Stop()
 
 	// 创建新的调度器
 	s.cron = cron.New(cron.WithSeconds())
@@ -436,7 +430,7 @@ func (s *SchedulerService) GetTaskStats() (*models.TaskStats, error) {
 
 	var nextTask models.ScheduledTask
 	if err := s.db.Session(&gorm.Session{Logger: s.db.Logger.LogMode(logger.Silent)}).
-		Where("enabled = ? AND next_run_at IS NOT NULL", true).
+		Where("enabled = ? AND next_run_at > ?", true, time.Now()).
 		Order("next_run_at ASC").First(&nextTask).Error; err == nil {
 		stats.NextExecutionAt = nextTask.NextRunAt
 	}
@@ -479,6 +473,9 @@ func (s *SchedulerService) GetCustomScriptService() *CustomScriptService {
 
 // CreateTask 创建任务
 func (s *SchedulerService) CreateTask(task *models.ScheduledTask) error {
+	if _, err := taskScheduleParser.Parse(task.CronExpr); err != nil {
+		return err
+	}
 	if err := s.db.Create(task).Error; err != nil {
 		return err
 	}
@@ -493,6 +490,12 @@ func (s *SchedulerService) CreateTask(task *models.ScheduledTask) error {
 
 // UpdateTask 更新任务
 func (s *SchedulerService) UpdateTask(task *models.ScheduledTask) error {
+	if _, err := taskScheduleParser.Parse(task.CronExpr); err != nil {
+		return err
+	}
+	if !task.Enabled {
+		task.NextRunAt = nil
+	}
 	if err := s.db.Save(task).Error; err != nil {
 		return err
 	}

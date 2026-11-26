@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -53,9 +54,9 @@ const { Option } = Select;
 const { TextArea } = Input;
 const { TabPane } = Tabs;
 
-function dnsStatus(target, now) {
+function dnsStatus(target) {
   const checkedAt = Date.parse(target.last_check_at);
-  if (!checkedAt || now - checkedAt > 90000) return { status: "default", text: "无数据" };
+  if (!checkedAt) return { status: "default", text: "无数据" };
   if (target.dns_alerting || !target.last_status) return { status: "error", text: "异常" };
   return { status: "success", text: "正常" };
 }
@@ -73,7 +74,7 @@ const Telemetry = () => {
   const [testingTargets, setTestingTargets] = useState(new Set());
   const [form] = Form.useForm();
   const targetType = Form.useWatch("type", form);
-  const [now, setNow] = useState(Date.now);
+
 
   // 检测类型配置
   const typeOptions = [
@@ -148,7 +149,6 @@ const Telemetry = () => {
     fetchStats();
     fetchResults();
     const timer = setInterval(() => {
-      setNow(Date.now());
       fetchTargets(false);
     }, 15000);
     return () => clearInterval(timer);
@@ -374,7 +374,12 @@ const Telemetry = () => {
             status={record.enabled ? "success" : "default"}
             text={record.enabled ? "启用" : "禁用"}
           />
-          {record.type === "dns" && record.enabled && <Badge {...dnsStatus(record, now)} />}
+          {record.enabled && (record.schedules?.length ? record.schedules.map((task) => (
+            <Text key={task.id} type="secondary">
+              <Link to="/tasks">{task.name}</Link>{!task.enabled ? " · 已暂停" : task.next_run_at ? ` · ${new Date(task.next_run_at).toLocaleString()}` : ""}
+            </Text>
+          )) : <Link to="/tasks">未配置定时任务</Link>)}
+          {record.type === "dns" && record.enabled && <Badge {...dnsStatus(record)} />}
           {record.type !== "dns" && record.last_check_at && (
             <Badge
               status={record.last_status ? "success" : "error"}
@@ -648,7 +653,7 @@ const Telemetry = () => {
                   <Form.Item name="dns_expected_a" label="预期 A 记录" rules={[{ required: true, whitespace: true, message: "请输入预期 IPv4 地址" }]}>
                     <Input placeholder="例如 192.0.2.10" />
                   </Form.Item>
-                  <Text type="secondary">启用后每 30 秒查询。连续失败 3 次告警，连续成功 2 次恢复。</Text>
+                  <Text type="secondary">在任务管理中设置查询周期。连续失败 3 次告警，连续成功 2 次恢复。</Text>
                 </>
               )}
 
@@ -763,7 +768,7 @@ const Telemetry = () => {
             </Descriptions.Item>
             <Descriptions.Item label="最后状态">
               {selectedTarget.type === "dns" ? (
-                <Badge {...dnsStatus(targets.find((target) => target.id === selectedTarget.id) || selectedTarget, now)} />
+                <Badge {...dnsStatus(targets.find((target) => target.id === selectedTarget.id) || selectedTarget)} />
               ) : selectedTarget.last_check_at ? (
                 <Badge
                   status={selectedTarget.last_status ? "success" : "error"}

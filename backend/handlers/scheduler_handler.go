@@ -376,11 +376,20 @@ func (h *SchedulerHandler) GetTelemetryTargets(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"data":    targets,
-		"success": true,
-	})
+	schedules, err := h.schedulerService.TelemetrySchedules(targets)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询遥测任务失败"})
+		return
+	}
+	type targetWithSchedules struct {
+		models.TelemetryTarget
+		Schedules []services.TelemetrySchedule `json:"schedules"`
+	}
+	result := make([]targetWithSchedules, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, targetWithSchedules{target, schedules[target.ID]})
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": result, "success": true})
 }
 
 type telemetryTargetInput struct {

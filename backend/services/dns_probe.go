@@ -10,13 +10,10 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
-	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 	"smartdns-manager/models"
 )
-
-const DNSProbeInterval = 30 * time.Second
 
 func ValidateDNSProbe(target models.TelemetryTarget) error {
 	server, err := netip.ParseAddr(strings.TrimSpace(target.Target))

@@ -79,7 +79,11 @@ test "$pid" -gt 0
 uname -m
 running_core_version "/proc/$pid"`, 8*time.Second)
 	if err != nil {
-		return status, fmt.Errorf("读取运行中的 SmartDNS 版本失败")
+		status.State = "读取核心版本失败"
+		if strings.Contains(output, "bad ELF interpreter") || strings.Contains(output, "required file not found") {
+			status.State = "无法加载核心解释器"
+		}
+		return status, fmt.Errorf("%s", status.State)
 	}
 	arch, version, ok := strings.Cut(strings.TrimSpace(output), "\n")
 	if !ok {

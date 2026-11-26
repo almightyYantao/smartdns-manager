@@ -17,12 +17,33 @@ func parseExpectedIPv4(value string) (string, error) {
 
 // 相对路径的 ELF 解释器由进程启动时的工作目录解析。
 const coreRunningVersion = `running_core_version() (
- cd "$1/cwd" && "$1/exe" -v 2>&1
+ if output=$(cd "$1/cwd" && "$1/exe" -v 2>&1); then
+  printf '%s\n' "$output"
+  exit 0
+ fi
+ case "$output" in
+  *'bad ELF interpreter'*|*'required file not found'*|*'not found'*) ;;
+  *) printf '%s\n' "$output" >&2; exit 1;;
+ esac
+ path=$(readlink "$1/exe") || exit 1
+ case "$path" in
+  /usr/sbin/smartdns|/usr/bin/smartdns|/usr/local/sbin/smartdns|/usr/local/bin/smartdns) ;;
+  *) printf '%s\n' "$output" >&2; exit 1;;
+ esac
+ directory=${path%/*}
+ for candidate in "$directory" "${directory%/*}" /; do
+  if version=$(cd "$candidate" && "$1/exe" -v 2>&1); then
+   printf '%s\n' "$version"
+   exit 0
+  fi
+ done
+ printf '%s\n' "$output" >&2
+ exit 1
 )
 `
 
 const coreDNSProbe = `probe_answers() {
- response=$(dig -r @127.0.0.1 "$name" A +time=2 +tries=1 +noall +comments +answer) &&
+ response=$(HOME=/dev/null dig @127.0.0.1 "$name" A +time=2 +tries=1 +noall +comments +answer) &&
  printf '%s\n' "$response" | grep -q 'status: NOERROR,' &&
  printf '%s\n' "$response" | awk '$4=="A" {print $5; found=1} END {exit !found}'
 }
