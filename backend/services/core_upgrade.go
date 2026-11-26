@@ -15,7 +15,24 @@ func parseExpectedIPv4(value string) (string, error) {
 	return addr.String(), nil
 }
 
-const coreUpgradeScript = `set -eu
+// 相对路径的 ELF 解释器由进程启动时的工作目录解析。
+const coreRunningVersion = `running_core_version() (
+ cd "$1/cwd" && "$1/exe" -v 2>&1
+)
+`
+
+const coreDNSProbe = `probe_answers() {
+ response=$(dig -r @127.0.0.1 "$name" A +time=2 +tries=1 +noall +comments +answer) &&
+ printf '%s\n' "$response" | grep -q 'status: NOERROR,' &&
+ printf '%s\n' "$response" | awk '$4=="A" {print $5; found=1} END {exit !found}'
+}
+probe() {
+ answers=$(probe_answers) &&
+ printf '%s\n' "$baseline" | grep -Fxq -- "$answers"
+}
+`
+
+const coreUpgradeScript = coreRunningVersion + coreDNSProbe + `set -eu
 umask 077
 digest=$1 before=$2 after=$3 name=$4 answer=$5
 for tool in base64 dig sha256sum flock timeout; do
@@ -23,11 +40,6 @@ for tool in base64 dig sha256sum flock timeout; do
 done
 exec 9>/run/lock/smartdns-manager-core.lock
 flock -n 9 || { echo '此节点已有升级任务'; exit 1; }
-probe() {
- response=$(dig -r @127.0.0.1 "$name" A +time=2 +tries=1 +noall +comments +answer) &&
- printf '%s\n' "$response" | grep -q 'status: NOERROR,' &&
- printf '%s\n' "$response" | awk -v ip="$answer" '$4=="A" && $5==ip {ok=1} END {exit !ok}'
-}
 running_pid() {
  systemctl show -p MainPID smartdns | cut -d= -f2
 }
@@ -49,10 +61,14 @@ case "$path" in
  *) echo '当前运行路径不支持自动升级'; exit 1;;
 esac
 [ "$(readlink -f "$path")" = "$path" ] || { echo '当前核心路径包含符号链接'; exit 1; }
-"/proc/$pid/exe" -v 2>&1 | grep -Fq "($before)" || { echo '当前版本已变化，请重新检测'; exit 1; }
+running_core_version "/proc/$pid" | grep -Fq "($before)" || { echo '当前版本已变化，请重新检测'; exit 1; }
 old_digest=$(sha256sum "/proc/$pid/exe" | cut -d' ' -f1)
 [ "$(sha256sum "$path" | cut -d' ' -f1)" = "$old_digest" ] || { echo '磁盘文件与运行中的核心不一致'; exit 1; }
-probe || { echo '升级前 DNS 查询未通过'; exit 1; }
+baseline=$(probe_answers) || { echo "升级前 DNS 查询未通过：$name 没有返回 A 记录"; exit 1; }
+if [ -n "$answer" ]; then
+ baseline=$answer
+ probe || { echo "升级前 DNS 未返回预期地址 $answer"; exit 1; }
+fi
 work=$(mktemp -d "${path%/*}/.smartdns-upgrade.XXXXXXXX")
 changed=0
 finish() {

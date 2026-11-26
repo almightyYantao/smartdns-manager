@@ -19,11 +19,13 @@ import {
   BellOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
+import { useSearchParams } from 'react-router-dom';
 import { getUserInfo } from '../utils/auth';
 import request from '../utils/request';
 import DatabaseBackupManager from '../components/Backup/DatabaseBackupManager';
 
 const Settings = () => {
+  const [searchParams] = useSearchParams();
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
   const userInfo = getUserInfo();
@@ -253,6 +255,7 @@ const Settings = () => {
   return (
     <Card title="系统设置" bordered={false}>
       <Tabs
+        defaultActiveKey={searchParams.get('tab') === 'system' ? 'system' : 'profile'}
         items={[
           {
             key: 'profile',

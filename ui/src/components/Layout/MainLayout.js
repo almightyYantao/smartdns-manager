@@ -30,13 +30,17 @@ const MainLayout = () => {
       label: "仪表板",
     },
     {
-      key: "/nodes",
+      key: "services",
       icon: <CloudServerOutlined />,
       label: "服务管理",
       children: [
         {
           key: "/nodes",
           label: "节点管理",
+        },
+        {
+          key: "/upgrades",
+          label: "升级管理",
         },
         {
           key: "/backup",
@@ -141,6 +145,7 @@ const MainLayout = () => {
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
+          defaultOpenKeys={location.pathname === "/upgrades" ? ["services"] : undefined}
           items={menuItems}
           onClick={handleMenuClick}
         />

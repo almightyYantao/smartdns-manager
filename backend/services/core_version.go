@@ -72,11 +72,12 @@ type CoreStatus struct {
 
 func (c *SSHClient) DetectCore(r CoreRelease) (CoreStatus, error) {
 	status := CoreStatus{Latest: r.Tag}
-	output, err := c.ExecuteCommandWithTimeout(`set -eu
+	output, err := c.ExecuteCommandWithTimeout(coreRunningVersion+`
+set -eu
 pid=$(systemctl show -p MainPID smartdns | cut -d= -f2)
 test "$pid" -gt 0
 uname -m
-"/proc/$pid/exe" -v 2>&1`, 8*time.Second)
+running_core_version "/proc/$pid"`, 8*time.Second)
 	if err != nil {
 		return status, fmt.Errorf("读取运行中的 SmartDNS 版本失败")
 	}
@@ -108,13 +109,20 @@ uname -m
 
 func (c *SSHClient) UpgradeCore(ctx context.Context, r CoreRelease, current CoreStatus, probeName, expectedIP string) (string, error) {
 	download, digest, ok := r.asset(current.Arch)
+	if probeName == "" && expectedIP == "" {
+		probeName = "example.com."
+	}
 	if !ok || !current.CanUpgrade || !coreTag.MatchString(current.Tag) || len(probeName) > 253 || !coreProbeName.MatchString(probeName) {
 		return "", fmt.Errorf("升级条件校验失败")
 	}
 	// 用严格校验后的常量作为脚本参数，SSH 会话内负责切换和回退。
-	addr, err := parseExpectedIPv4(expectedIP)
-	if err != nil {
-		return "", err
+	addr := ""
+	if expectedIP != "" {
+		var err error
+		addr, err = parseExpectedIPv4(expectedIP)
+		if err != nil {
+			return "", err
+		}
 	}
 	data, err := r.readAsset(ctx, download)
 	if err != nil {
@@ -123,6 +131,6 @@ func (c *SSHClient) UpgradeCore(ctx context.Context, r CoreRelease, current Core
 	if err := verifyCoreAsset(data, digest); err != nil {
 		return "", err
 	}
-	command := "/bin/sh -s -- " + strings.Join([]string{digest, current.Tag, r.Tag, probeName, addr}, " ")
+	command := "/bin/sh -s -- " + strings.Join([]string{digest, current.Tag, r.Tag, probeName}, " ") + " '" + addr + "'"
 	return c.runCoreUpgrade(command, data)
 }

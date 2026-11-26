@@ -60,8 +60,8 @@ func UpgradeNodeCore(c *gin.Context) {
 	var input struct {
 		Current    string `json:"current" binding:"required"`
 		Target     string `json:"target" binding:"required"`
-		Domain     string `json:"domain" binding:"required"`
-		ExpectedIP string `json:"expected_ip" binding:"required"`
+		Domain     string `json:"domain"`
+		ExpectedIP string `json:"expected_ip"`
 	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil || id == 0 || c.ShouldBindJSON(&input) != nil {

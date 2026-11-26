@@ -2,7 +2,9 @@ package services
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -76,5 +78,47 @@ func TestCoreMirrorAndDigest(t *testing.T) {
 	}
 	if err := verifyCoreAsset([]byte("<html>mirror page</html>"), digest); err == nil {
 		t.Fatal("镜像错误页面通过了校验")
+	}
+}
+
+func TestRunningCoreVersionUsesProcessDirectory(t *testing.T) {
+	process := t.TempDir()
+	cwd := filepath.Join(process, "cwd")
+	if err := os.MkdirAll(filepath.Join(cwd, "lib"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, "lib", "loader"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(process, "exe"), []byte("#!/bin/sh\ntest -f lib/loader || exit 126\necho 'smartdns (Release48.4)'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", coreRunningVersion+`running_core_version "$1"`, "sh", process)
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "smartdns (Release48.4)" {
+		t.Fatalf("读取运行版本失败 %q: %v", out, err)
+	}
+}
+
+func TestCoreDNSProbeRequiresAnswerOverlap(t *testing.T) {
+	for _, tc := range []struct {
+		status, records string
+		want            bool
+	}{
+		{"NOERROR", "example.com. 60 IN A 192.0.2.9\nexample.com. 60 IN A 192.0.2.2", true},
+		{"NOERROR", "example.com. 60 IN A 192.0.2.9", false},
+		{"NOERROR", "", false},
+		{"SERVFAIL", "example.com. 60 IN A 192.0.2.2", false},
+	} {
+		cmd := exec.Command("sh", "-c", coreDNSProbe+`
+name=example.com.
+baseline='192.0.2.1
+192.0.2.2'
+dig() { printf ';; status: %s,\n%s\n' "$probe_status" "$probe_records"; }
+probe
+`)
+		cmd.Env = append(os.Environ(), "probe_status="+tc.status, "probe_records="+tc.records)
+		if err := cmd.Run(); (err == nil) != tc.want {
+			t.Fatalf("%+v: %v", tc, err)
+		}
 	}
 }
