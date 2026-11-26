@@ -1,24 +1,26 @@
 import React, { useState } from "react";
-import { Layout, Menu, Avatar, Dropdown, Badge, Space } from "antd";
+import { Layout, Menu, Avatar, Dropdown, Badge, Space, Button, Drawer } from "antd";
 import {
   DashboardOutlined,
   CloudServerOutlined,
-  GlobalOutlined,
   SettingOutlined,
   LogoutOutlined,
   UserOutlined,
   BellOutlined,
-  ScheduleOutlined,
+  MenuOutlined,
   MonitorOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { removeToken, removeUserInfo, getUserInfo } from "../../utils/auth";
+import useMobile from "../../utils/useMobile";
 import "./MainLayout.css";
 
 const { Header, Sider, Content } = Layout;
 
 const MainLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const mobile = useMobile();
   const navigate = useNavigate();
   const location = useLocation();
   const userInfo = getUserInfo();
@@ -105,6 +107,7 @@ const MainLayout = () => {
   ];
 
   const handleMenuClick = ({ key }) => {
+    setMenuOpen(false);
     navigate(key);
   };
 
@@ -132,37 +135,47 @@ const MainLayout = () => {
     },
   ];
 
+  const menu = (theme, items) => (
+    <Menu theme={theme} mode="inline" selectedKeys={[location.pathname]}
+      defaultOpenKeys={location.pathname === "/upgrades" ? ["services"] : undefined}
+      items={items} onClick={handleMenuClick} />
+  );
+
+  const mobileMenuItems = menuItems.flatMap((item) => item.key === "services" ? [
+    item.children.find(({ key }) => key === "/upgrades"),
+    { ...item, children: item.children.filter(({ key }) => key !== "/upgrades") },
+  ] : [item]);
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        theme="dark"
-      >
-        <div className="logo">{collapsed ? "SD" : "SmartDNS"}</div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultOpenKeys={location.pathname === "/upgrades" ? ["services"] : undefined}
-          items={menuItems}
-          onClick={handleMenuClick}
-        />
-      </Sider>
+      {mobile ? (
+        <Drawer title="SmartDNS 导航" placement="left" width="min(320px, 100vw)"
+          open={menuOpen} onClose={() => setMenuOpen(false)} styles={{ body: { padding: 0 } }}>
+          {menu("light", mobileMenuItems)}
+        </Drawer>
+      ) : (
+        <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="dark">
+          <div className="logo">{collapsed ? "SD" : "SmartDNS"}</div>
+          {menu("dark", menuItems)}
+        </Sider>
+      )}
       <Layout>
         <Header className="site-layout-header">
           <div className="header-content">
-            <div className="header-title">SmartDNS 管理系统</div>
+            <div className="header-brand">
+              {mobile && <Button type="text" icon={<MenuOutlined />} aria-label="打开导航"
+                aria-expanded={menuOpen} onClick={() => setMenuOpen(true)} />}
+              <div className="header-title">{mobile ? "SmartDNS" : "SmartDNS 管理系统"}</div>
+            </div>
             <Space size="large">
-              <Badge count={0} showZero={false}>
+              {!mobile && <Badge count={0} showZero={false}>
                 <BellOutlined style={{ fontSize: "20px", cursor: "pointer" }} />
-              </Badge>
-              <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-                <Space style={{ cursor: "pointer" }}>
-                  <Avatar icon={<UserOutlined />} />
-                  <span>{userInfo?.username || "用户"}</span>
-                </Space>
+              </Badge>}
+              <Dropdown menu={{ items: userMenuItems }} trigger={["click"]} placement="bottomRight">
+                <Button type="text" className="account-button" aria-label="账户菜单">
+                  <Avatar size="small" icon={<UserOutlined />} />
+                  {!mobile && <span>{userInfo?.username || "用户"}</span>}
+                </Button>
               </Dropdown>
             </Space>
           </div>

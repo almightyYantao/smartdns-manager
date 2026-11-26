@@ -15,6 +15,7 @@ import {
   message,
   Popconfirm,
   Descriptions,
+  Dropdown,
   Drawer,
   Statistic,
   Row,
@@ -22,7 +23,7 @@ import {
   Typography,
   Tooltip,
   Badge,
-  Divider,
+  List,
   Alert,
   Tabs,
 } from "antd";
@@ -30,13 +31,11 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  PlayCircleOutlined,
   EyeOutlined,
   HistoryOutlined,
   RadarChartOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
-  ExclamationCircleOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import {
@@ -48,6 +47,8 @@ import {
   getTelemetryStats,
   testTelemetryTarget,
 } from "../api/modules/scheduler";
+
+import useMobile from "../utils/useMobile";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -62,8 +63,11 @@ function dnsStatus(target) {
 }
 
 const Telemetry = () => {
+  const mobile = useMobile();
   const [targets, setTargets] = useState([]);
   const [results, setResults] = useState([]);
+  const [loadingResults, setLoadingResults] = useState(false);
+  const [resultsError, setResultsError] = useState(false);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -147,7 +151,6 @@ const Telemetry = () => {
   useEffect(() => {
     fetchTargets();
     fetchStats();
-    fetchResults();
     const timer = setInterval(() => {
       fetchTargets(false);
     }, 15000);
@@ -176,19 +179,21 @@ const Telemetry = () => {
     }
   };
 
-  const fetchResults = async (targetId = null) => {
-    try {
-      const params = targetId
-        ? { target_id: targetId }
-        : { page: 1, pageSize: 50 };
-      const response = await getTelemetryResults(params);
-      const resultsData = response.data?.results || response.data || [];
-      setResults(Array.isArray(resultsData) ? resultsData : []);
-    } catch (error) {
-      console.error("获取遥测结果失败:", error);
-      setResults([]);
-    }
-  };
+  const historyTargetId = resultsVisible ? selectedTarget?.id : null;
+  useEffect(() => {
+    if (historyTargetId == null) return;
+    let active = true;
+    getTelemetryResults({ target_id: historyTargetId }).then((response) => {
+      if (!active) return;
+      const data = response.data?.results || response.data || [];
+      setResults(Array.isArray(data) ? data : []);
+    }).catch(() => {
+      if (active) setResultsError(true);
+    }).finally(() => {
+      if (active) setLoadingResults(false);
+    });
+    return () => { active = false; };
+  }, [historyTargetId]);
 
   const handleCreateTarget = () => {
     setEditingTarget(null);
@@ -238,7 +243,6 @@ const Telemetry = () => {
 
       // 刷新数据
       fetchTargets();
-      fetchResults();
       fetchStats();
     } catch (error) {
       message.error(
@@ -306,7 +310,9 @@ const Telemetry = () => {
 
   const showResults = (target) => {
     setSelectedTarget(target);
-    fetchResults(target.id);
+    setResults([]);
+    setResultsError(false);
+    setLoadingResults(true);
     setResultsVisible(true);
   };
 
@@ -502,8 +508,8 @@ const Telemetry = () => {
   return (
     <div>
       {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={6}>
+      <Row className="operations-stats" gutter={[ mobile ? 8 : 16, 8 ]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="总目标数"
@@ -512,7 +518,7 @@ const Telemetry = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="在线目标"
@@ -522,7 +528,7 @@ const Telemetry = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="平均延迟"
@@ -533,7 +539,7 @@ const Telemetry = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="成功率"
@@ -551,6 +557,7 @@ const Telemetry = () => {
       {/* 遥测目标列表 */}
       <Card
         title="遥测目标管理"
+        className="operations-page"
         extra={
           <Button
             type="primary"
@@ -561,13 +568,32 @@ const Telemetry = () => {
           </Button>
         }
       >
-        <Table
-          columns={columns}
-          dataSource={targets}
+        {mobile ? <List
+          split={false}
           loading={loading}
+          dataSource={targets}
           rowKey="id"
-          pagination={{ pageSize: 10 }}
-        />
+          pagination={{ pageSize: 10, size: "small", hideOnSinglePage: true, showSizeChanger: false }}
+          renderItem={(target) => <List.Item className="operation-item" style={{ display: "grid", padding: 12, marginBottom: 10 }}>
+            <div className="operation-row">
+              <strong>{target.name}</strong>
+              {target.enabled ? <Badge {...dnsStatus(target)} /> : <Badge status="default" text="禁用" />}
+            </div>
+            <div>{columns[1].render(target.type)}{columns[2].render(target.target, target)}</div>
+            <Text type="secondary">{target.last_check_at ? new Date(target.last_check_at).toLocaleString() : "尚未检测"}
+              {target.last_status && target.last_latency != null ? ` · ${target.last_latency} ms` : ""}
+            </Text>
+            <div className="operation-row">
+              <Button onClick={() => showResults(target)}>检测历史</Button>
+              <Dropdown trigger={["click"]} menu={{ items: [
+                { key: "details", label: "目标详情", onClick: () => showTargetDetail(target) },
+                { key: "test", label: "手动测试", disabled: testingTargets.has(target.id), onClick: () => handleTestTarget(target.id) },
+                { key: "edit", label: "编辑目标", onClick: () => handleEditTarget(target) },
+              ] }}><Button>更多</Button></Dropdown>
+            </div>
+          </List.Item>}
+        /> : <Table columns={columns} dataSource={targets} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />}
+
       </Card>
 
       {/* 创建/编辑目标对话框 */}
@@ -686,7 +712,7 @@ const Telemetry = () => {
                 <Title level={5}>选择预设模板</Title>
                 <Row gutter={[16, 16]}>
                   {presetTemplates.map((template, index) => (
-                    <Col span={12} key={index}>
+                    <Col xs={24} sm={12} key={index}>
                       <Card
                         size="small"
                         title={template.name}
@@ -729,6 +755,9 @@ const Telemetry = () => {
       <Drawer
         title="遥测目标详情"
         width={600}
+        height={mobile ? "80dvh" : undefined}
+        placement={mobile ? "bottom" : "right"}
+        rootClassName={mobile ? "operation-sheet" : undefined}
         open={detailVisible}
         onClose={() => setDetailVisible(false)}
       >
@@ -745,6 +774,13 @@ const Telemetry = () => {
             <Descriptions.Item label="目标地址">
               <code>{selectedTarget.target}</code>
             </Descriptions.Item>
+            {selectedTarget.type === "dns" && <>
+              <Descriptions.Item label="查询域名">{selectedTarget.dns_name}</Descriptions.Item>
+              <Descriptions.Item label="预期 A 记录">{selectedTarget.dns_expected_a}</Descriptions.Item>
+            </>}
+            {mobile && <Descriptions.Item label="定时任务">
+              {columns[4].render(null, selectedTarget)}
+            </Descriptions.Item>}
             <Descriptions.Item label="超时设置">
               {selectedTarget.timeout}ms
             </Descriptions.Item>
@@ -790,22 +826,47 @@ const Telemetry = () => {
             )}
           </Descriptions>
         )}
+        {mobile && selectedTarget && <div style={{ marginTop: 16 }}>
+          <Popconfirm title="确定删除这个遥测目标吗？" onConfirm={async () => {
+            await handleDeleteTarget(selectedTarget.id);
+            setDetailVisible(false);
+          }}>
+            <Button danger>删除目标</Button>
+          </Popconfirm>
+        </div>}
       </Drawer>
 
       {/* 检测历史抽屉 */}
       <Drawer
         title="检测历史"
         width={900}
+        height={mobile ? "80dvh" : undefined}
+        placement={mobile ? "bottom" : "right"}
+        rootClassName={mobile ? "operation-sheet" : undefined}
         open={resultsVisible}
         onClose={() => setResultsVisible(false)}
       >
-        <Table
-          columns={resultColumns}
+        {mobile && selectedTarget && <p className="operation-identity"><strong>{selectedTarget.name}</strong> · {selectedTarget.target}
+          {selectedTarget.type === "dns" && <> · UDP/53 · {selectedTarget.dns_name}</>}
+        </p>}
+        {resultsError ? <Alert type="error" showIcon message="读取检测历史失败，请关闭后重试" /> : mobile ? <List
+          split={false}
+          loading={loadingResults}
           dataSource={results}
           rowKey="id"
-          pagination={{ pageSize: 20 }}
-          size="small"
-        />
+          pagination={{ pageSize: 20, size: "small", hideOnSinglePage: true, showSizeChanger: false }}
+          renderItem={(result) => <List.Item className="operation-item" style={{ display: "grid", padding: 12, marginBottom: 10 }}>
+            <div className="operation-row">
+              {resultColumns[1].render(result.success)}
+              <Text type="secondary">{resultColumns[0].render(result.checked_at)}</Text>
+            </div>
+            {result.latency != null && <Text>延迟 {result.latency} ms</Text>}
+            {result.error && <Text type="danger">{result.error}</Text>}
+            {result.response && <Text>{result.response}</Text>}
+          </List.Item>}
+        /> : <Table columns={resultColumns} dataSource={results} loading={loadingResults}
+          rowKey="id" pagination={{ pageSize: 20 }} size="small" />}
+
       </Drawer>
     </div>
   );
