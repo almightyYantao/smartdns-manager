@@ -11,6 +11,72 @@ import (
 	"smartdns-manager/models"
 )
 
+func TestUnassignNodeAddress(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/addresses.db"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.Node{}, &models.AddressMap{}); err != nil {
+		t.Fatal(err)
+	}
+	nodes := []models.Node{
+		{ID: 1, Name: "当前节点", Host: "192.0.2.11"},
+		{ID: 2, Name: "节点二", Host: "192.0.2.12"},
+		{ID: 3, Name: "节点三", Host: "192.0.2.13"},
+	}
+	if err := db.Create(&nodes).Error; err != nil {
+		t.Fatal(err)
+	}
+	mappings := []models.AddressMap{
+		{Domain: "example.test", IP: "192.0.2.1", NodeIDs: "[]", Enabled: true},
+		{Domain: "example.test", IP: "192.0.2.1", NodeIDs: "[1,3]", Enabled: true},
+		{Domain: "example.test", IP: "192.0.2.1", NodeIDs: "[1]", Enabled: true},
+		{Domain: "example.test", IP: "192.0.2.2", NodeIDs: "[1]", Enabled: true},
+		{Domain: "example.test", IP: "192.0.2.1", NodeIDs: "[2]", Enabled: true},
+	}
+	if err := db.Create(&mappings).Error; err != nil {
+		t.Fatal(err)
+	}
+	config := "address /example.test/192.0.2.1\naddress /example.test/192.0.2.2\n"
+	mapping, err := nodeAddressAt(config, NodeAddressConfigChecksum(config), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeErr := errors.New("节点写入失败")
+	if err := unassignNodeAddress(db, 1, mapping, func() error { return writeErr }); !errors.Is(err, writeErr) {
+		t.Fatal(err)
+	}
+	var unchanged []models.AddressMap
+	if err := db.Order("id").Find(&unchanged).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(unchanged) != len(mappings) || unchanged[0].NodeIDs != "[]" || unchanged[1].NodeIDs != "[1,3]" {
+		t.Fatalf("写入失败后保留原分配: %+v", unchanged)
+	}
+
+	if err := unassignNodeAddress(db, 1, mapping, func() error {
+		config = removeAddressDirective(config, &mapping)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var updated []models.AddressMap
+	if err := db.Order("id").Find(&updated).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 4 || updated[0].NodeIDs != "[2,3]" || updated[1].NodeIDs != "[3]" ||
+		updated[2].IP != "192.0.2.2" || updated[2].NodeIDs != "[1]" || updated[3].NodeIDs != "[2]" ||
+		config != "address /example.test/192.0.2.2\n" {
+		t.Fatalf("移除后出现错误的节点分配或文件内容：%+v %q", updated, config)
+	}
+	if err := unassignNodeAddress(db, 1, mapping, func() error {
+		t.Fatal("分配已取消，不能再次写节点配置")
+		return nil
+	}); !errors.Is(err, ErrNodeAddressChanged) {
+		t.Fatal(err)
+	}
+}
+
 func TestAdoptNodeAddressMapping(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/addresses.db"), &gorm.Config{})
 	if err != nil {

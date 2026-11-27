@@ -513,7 +513,10 @@ func AdoptNodeAddressMapping(c *gin.Context) {
 }
 
 func DeleteNodeAddressMapping(c *gin.Context) {
-	var input nodeAddressMappingInput
+	var input struct {
+		nodeAddressMappingInput
+		Unassign bool `json:"unassign"`
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "缺少有效的配置行号或校验值"})
 		return
@@ -524,19 +527,26 @@ func DeleteNodeAddressMapping(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var mappings []models.AddressMap
-	if err := database.DB.Where("enabled = ?", true).Find(&mappings).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取控制台地址映射失败"})
-		return
+	var backup string
+	var err error
+	if input.Unassign {
+		backup, err = services.RemoveAssignedNodeAddressMapping(database.DB, &node, input.Checksum, input.Line)
+	} else {
+		var mappings []models.AddressMap
+		if err := database.DB.Where("enabled = ?", true).Find(&mappings).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取控制台地址映射失败"})
+			return
+		}
+		backup, err = services.RemoveNodeAddressMapping(&node, input.Checksum, input.Line, mappings)
 	}
-	backup, err := services.RemoveNodeAddressMapping(&node, input.Checksum, input.Line, mappings)
 	if errors.Is(err, services.ErrNodeAddressAssigned) || errors.Is(err, services.ErrNodeAddressChanged) {
 		c.JSON(http.StatusConflict, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	if err != nil {
 		log.Printf("删除节点地址映射失败 (节点 %d): %v", node.ID, err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "无法删除当前节点的映射，请检查节点连接和配置写入权限"})
+		c.JSON(http.StatusBadGateway, gin.H{"success": false,
+			"message": "未完成当前节点的映射移除，请重新读取节点配置后核对。", "backupPath": backup})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"backupPath": backup}})

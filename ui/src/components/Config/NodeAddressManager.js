@@ -58,8 +58,11 @@ export default function NodeAddressManager({ nodeId, active }) {
           already_assigned: '当前节点已分配此映射。',
         }[data.action]);
       } else {
-        await deleteNodeAddressMapping(nodeId, input);
-        message.success('已从当前节点主配置删除。重启 SmartDNS 后生效。');
+        const unassign = row.status === 'matched';
+        await deleteNodeAddressMapping(nodeId, unassign ? { ...input, unassign: true } : input);
+        message.success(unassign
+          ? '已移除当前节点的全局分配和主配置映射。重启 SmartDNS 后生效。'
+          : '已从当前节点主配置删除。重启 SmartDNS 后生效。');
       }
     } catch {
       // 请求拦截器展示服务端错误。重新读取以核对节点的实际状态。
@@ -84,23 +87,29 @@ export default function NodeAddressManager({ nodeId, active }) {
         </Tooltip>
       ) },
     { title: '主配置行号', dataIndex: 'line', key: 'line', width: 110, render: (line) => line ?? '—' },
-    { title: '操作', key: 'action', width: 300, render: (_, row) => canRemove(row) && (
+    { title: '操作', key: 'action', width: 300, render: (_, row) => row.line && (
       <Space wrap size={8}>
-        <Tooltip title="有相同的全局映射就加入当前节点，否则新建一条仅分配给当前节点的记录。" trigger={['hover', 'focus']}>
+        {canRemove(row) && <Tooltip title="有相同的全局映射就加入当前节点，否则新建一条仅分配给当前节点的记录。" trigger={['hover', 'focus']}>
           <Popconfirm title="将这条配置纳入全局地址映射？"
             description="匹配到现有映射时补上当前节点，否则新建一条仅分配给当前节点的映射。"
             okText="纳入" cancelText="取消" onConfirm={() => operate(row, 'adopt')}>
             <Button size="small" icon={<PlusOutlined />} disabled={Boolean(operation)}
               loading={operation?.line === row.line && operation.action === 'adopt'}>纳入全局映射</Button>
           </Popconfirm>
-        </Tooltip>
-        <Tooltip title="只从当前节点的主配置移除。重启该节点的 SmartDNS 后生效。" trigger={['hover', 'focus']}>
-          <Popconfirm title="仅从当前节点删除这条映射？"
-            description="将备份并更新此节点的主配置。需要手动重启该节点的 SmartDNS 才会生效。"
+        </Tooltip>}
+        <Tooltip title={row.status === 'matched'
+          ? '同步撤销当前节点在全局映射中的分配，并移除当前节点的主配置。'
+          : '只从当前节点的主配置移除。重启该节点的 SmartDNS 后生效。'} trigger={['hover', 'focus']}>
+          <Popconfirm title={row.status === 'matched' ? '移除当前节点的配置和全局分配？' : '仅从当前节点删除这条映射？'}
+            description={row.status === 'matched'
+              ? '将备份并更新本节点主配置。「全部节点」会改为其余现有节点；若没有剩余节点，会删除全局记录。需手动重启当前节点的 SmartDNS。'
+              : '将备份并更新此节点的主配置。需要手动重启该节点的 SmartDNS 才会生效。'}
             okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
             onConfirm={() => operate(row, 'remove')}>
             <Button size="small" danger icon={<DeleteOutlined />} disabled={Boolean(operation)}
-              loading={operation?.line === row.line && operation.action === 'remove'}>仅从此节点删除</Button>
+              loading={operation?.line === row.line && operation.action === 'remove'}>
+              {row.status === 'matched' ? '移除当前节点' : '仅从此节点删除'}
+            </Button>
           </Popconfirm>
         </Tooltip>
       </Space>
@@ -112,7 +121,7 @@ export default function NodeAddressManager({ nodeId, active }) {
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Alert showIcon type={extraCount ? 'warning' : 'info'}
         message={extraCount ? `当前节点主配置有 ${extraCount} 条未分配映射` : '当前节点的地址映射'}
-        description="对照节点主配置和控制台分配。这里的删除仅作用于当前节点，更新主配置后需手动重启 SmartDNS。" />
+        description="对照节点主配置和控制台分配。移除「一致」的映射时，会同时撤销当前节点的全局分配。更新主配置后需手动重启 SmartDNS。" />
       <Space wrap>
         <Button icon={<SyncOutlined />} loading={loading} disabled={Boolean(operation)} onClick={reload}>重新读取节点配置</Button>
         <Link to="/addresses">全局地址映射</Link>

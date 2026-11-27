@@ -185,16 +185,24 @@ func NodeAddressConfigChecksum(config string) string {
 
 // AdoptNodeAddressMapping 将节点上已有的指令登记到控制台，保留现有记录和其他节点的范围。
 func AdoptNodeAddressMapping(db *gorm.DB, nodeID uint, config, checksum string, line int) (string, error) {
+	mapping, err := nodeAddressAt(config, checksum, line)
+	if err != nil {
+		return "", err
+	}
+	return assignNodeAddressMapping(db, nodeID, mapping)
+}
+
+func nodeAddressAt(config, checksum string, line int) (models.AddressMap, error) {
 	if NodeAddressConfigChecksum(config) != checksum {
-		return "", ErrNodeAddressChanged
+		return models.AddressMap{}, ErrNodeAddressChanged
 	}
 	entries, _ := parseAddressDirectives(strings.Split(config, "\n"))
 	for _, entry := range entries {
 		if entry.line+1 == line && ordinaryAddressMapping(entry.mapping) {
-			return assignNodeAddressMapping(db, nodeID, entry.mapping)
+			return entry.mapping, nil
 		}
 	}
-	return "", ErrNodeAddressChanged
+	return models.AddressMap{}, ErrNodeAddressChanged
 }
 
 func assignNodeAddressMapping(db *gorm.DB, nodeID uint, mapping models.AddressMap) (string, error) {
@@ -289,4 +297,96 @@ func RemoveNodeAddressMapping(node *models.Node, checksum string, line int, mapp
 		return "", err
 	}
 	return writeNodeAddressConfig(client, node.ConfigPath, current, updated)
+}
+
+// 取消全部匹配的分配，避免重复登记的记录或「全部节点」在下次同步时加回映射。
+func unassignNodeAddress(db *gorm.DB, nodeID uint, mapping models.AddressMap, write func() error) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var existing []models.AddressMap
+		if err := tx.Where("domain = ? COLLATE NOCASE AND enabled = ?", mapping.Domain, true).Find(&existing).Error; err != nil {
+			return err
+		}
+		changed := false
+		for _, candidate := range existing {
+			if addressDirective(&candidate) != addressDirective(&mapping) {
+				continue
+			}
+			applies, err := addressAssignedToNode(candidate, nodeID)
+			if err != nil {
+				return err
+			}
+			if !applies {
+				continue
+			}
+			changed = true
+			var remaining []uint
+			if candidate.NodeIDs == "" || candidate.NodeIDs == "[]" {
+				if err := tx.Model(&models.Node{}).Where("id <> ?", nodeID).Order("id").Pluck("id", &remaining).Error; err != nil {
+					return err
+				}
+			} else {
+				if err := json.Unmarshal([]byte(candidate.NodeIDs), &remaining); err != nil {
+					return err
+				}
+				remaining = slices.DeleteFunc(remaining, func(id uint) bool { return id == nodeID })
+			}
+			if len(remaining) == 0 {
+				if err := tx.Delete(&candidate).Error; err != nil {
+					return err
+				}
+			} else {
+				scope, err := json.Marshal(remaining)
+				if err != nil {
+					return err
+				}
+				if err := tx.Model(&candidate).Update("node_ids", string(scope)).Error; err != nil {
+					return err
+				}
+			}
+		}
+		if !changed {
+			return ErrNodeAddressChanged
+		}
+		return write()
+	})
+}
+
+func RemoveAssignedNodeAddressMapping(db *gorm.DB, node *models.Node, checksum string, line int) (string, error) {
+	client, err := NewSSHClient(node)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	current, err := client.ReadFile(node.ConfigPath)
+	if err != nil {
+		return "", err
+	}
+	mapping, err := nodeAddressAt(current, checksum, line)
+	if err != nil {
+		return "", err
+	}
+	updated := removeAddressDirective(current, &mapping)
+	var backup string
+	var attempted bool
+	err = unassignNodeAddress(db, node.ID, mapping, func() error {
+		attempted = true
+		var writeErr error
+		backup, writeErr = writeNodeAddressConfig(client, node.ConfigPath, current, updated)
+		return writeErr
+	})
+	if err != nil && attempted && !errors.Is(err, ErrNodeAddressChanged) {
+		// 如果数据库未提交而节点已经写入，只在确认文件仍是本次版本时补偿。
+		latest, readErr := client.ReadFile(node.ConfigPath)
+		switch {
+		case readErr != nil:
+			return backup, errors.Join(err, fmt.Errorf("无法确认节点配置是否已写入: %w", readErr))
+		case latest == updated:
+			if restoreErr := client.WriteFile(node.ConfigPath, current); restoreErr != nil {
+				return backup, errors.Join(err, fmt.Errorf("无法恢复节点原配置: %w", restoreErr))
+			}
+		case latest != current:
+			return backup, errors.Join(err, fmt.Errorf("节点配置已被其他操作修改，请从备份核对"))
+		}
+	}
+	return backup, err
 }
