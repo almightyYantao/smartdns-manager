@@ -47,6 +47,7 @@ func addressDirective(address *models.AddressMap) string {
 type parsedAddressDirective struct {
 	mapping models.AddressMap
 	line    int
+	comment string
 }
 
 // 只比较普通顶层映射，规则组内或引用文件中的指令有独立的作用范围。
@@ -86,7 +87,12 @@ func parseAddressDirectives(lines []string) (entries []parsedAddressDirective, p
 			} else {
 				mapping.IP = parts[2]
 			}
-			entries = append(entries, parsedAddressDirective{mapping: mapping, line: i})
+			var comment string
+			if len(fields) > 2 {
+				_, suffix, _ := strings.Cut(line, fields[1])
+				comment = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(suffix), "#"))
+			}
+			entries = append(entries, parsedAddressDirective{mapping: mapping, line: i, comment: comment})
 		}
 	}
 	return entries, partial
@@ -105,11 +111,12 @@ func removeAddressDirective(config string, address *models.AddressMap) string {
 }
 
 type NodeAddressMapping struct {
-	Domain string `json:"domain"`
-	Type   string `json:"type"`
-	Target string `json:"target"`
-	Line   int    `json:"line,omitempty"`
-	Status string `json:"status"`
+	Domain  string `json:"domain"`
+	Type    string `json:"type"`
+	Target  string `json:"target"`
+	Comment string `json:"comment,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Status  string `json:"status"`
 }
 
 func nodeAddressMapping(mapping models.AddressMap, line int, status string) NodeAddressMapping {
@@ -117,25 +124,30 @@ func nodeAddressMapping(mapping models.AddressMap, line int, status string) Node
 	if mapping.Type == "cname" {
 		kind, target = "cname", mapping.CNAME
 	}
-	return NodeAddressMapping{Domain: mapping.Domain, Type: kind, Target: target, Line: line, Status: status}
+	return NodeAddressMapping{Domain: mapping.Domain, Type: kind, Target: target, Comment: mapping.Comment, Line: line, Status: status}
 }
 
 func CompareNodeAddressMappings(config string, mappings []models.AddressMap, nodeID uint) ([]NodeAddressMapping, bool, error) {
 	entries, partial := parseAddressDirectives(strings.Split(config, "\n"))
-	known := map[string]bool{}
+	known := map[string]string{}
 	assigned := map[string]models.AddressMap{}
 	for _, mapping := range mappings {
 		if !ordinaryAddressMapping(mapping) {
 			continue
 		}
 		key := addressDirective(&mapping)
-		known[key] = true
+		mapping.Comment = strings.TrimSpace(mapping.Comment)
+		if known[key] == "" {
+			known[key] = mapping.Comment
+		}
 		applies, err := addressAssignedToNode(mapping, nodeID)
 		if err != nil {
 			return nil, false, err
 		}
 		if applies {
-			assigned[key] = mapping
+			if current, exists := assigned[key]; !exists || current.Comment == "" {
+				assigned[key] = mapping
+			}
 		}
 	}
 	result := make([]NodeAddressMapping, 0, len(entries))
@@ -148,12 +160,21 @@ func CompareNodeAddressMappings(config string, mappings []models.AddressMap, nod
 		key := addressDirective(&entry.mapping)
 		present[key] = true
 		status := "node_only"
-		if _, ok := assigned[key]; ok {
+		comment := entry.comment
+		if expected, ok := assigned[key]; ok {
 			status = "matched"
-		} else if known[key] {
+			if expected.Comment != "" {
+				comment = expected.Comment
+			}
+		} else if globalComment, ok := known[key]; ok {
 			status = "unassigned"
+			if comment == "" {
+				comment = globalComment
+			}
 		}
-		result = append(result, nodeAddressMapping(entry.mapping, entry.line+1, status))
+		row := nodeAddressMapping(entry.mapping, entry.line+1, status)
+		row.Comment = comment
+		result = append(result, row)
 	}
 	for _, mapping := range mappings {
 		key := addressDirective(&mapping)

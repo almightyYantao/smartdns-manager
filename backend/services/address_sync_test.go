@@ -156,31 +156,31 @@ func TestRemoveAddressDirective(t *testing.T) {
 }
 
 func TestNodeAddressMappingComparisonAndRemoval(t *testing.T) {
-	const config = "address /matched.test/192.0.2.1\n" +
+	const config = "address /matched.test/192.0.2.1 # 节点原注释\n" +
 		"address /other.test/192.0.2.2 # 此节点未分配\n" +
-		"cname /local.test/local-name.test\n" +
+		"cname /local.test/local-name.test # 节点本地别名\n" +
 		"address /domain-set:blocklist/#\n" +
 		"address /blocked.test/#\n" +
 		"conf-file /etc/smartdns/custom.conf\n"
 	mappings := []models.AddressMap{
-		{Domain: "matched.test", IP: "192.0.2.1", Enabled: true, NodeIDs: "[]"},
+		{Domain: "matched.test", IP: "192.0.2.1", Enabled: true, NodeIDs: "[]", Comment: "全局用途"},
 		{Domain: "other.test", IP: "192.0.2.2", Enabled: true, NodeIDs: "[2]"},
-		{Domain: "pending.test", IP: "192.0.2.3", Enabled: true, NodeIDs: "[1]"},
+		{Domain: "pending.test", IP: "192.0.2.3", Enabled: true, NodeIDs: "[1]", Comment: "待下发用途"},
 	}
 	rows, partial, err := CompareNodeAddressMappings(config, mappings, 1)
 	expected := []NodeAddressMapping{
-		{Domain: "matched.test", Type: "address", Target: "192.0.2.1", Line: 1, Status: "matched"},
-		{Domain: "other.test", Type: "address", Target: "192.0.2.2", Line: 2, Status: "unassigned"},
-		{Domain: "local.test", Type: "cname", Target: "local-name.test", Line: 3, Status: "node_only"},
-		{Domain: "pending.test", Type: "address", Target: "192.0.2.3", Status: "pending"},
+		{Domain: "matched.test", Type: "address", Target: "192.0.2.1", Comment: "全局用途", Line: 1, Status: "matched"},
+		{Domain: "other.test", Type: "address", Target: "192.0.2.2", Comment: "此节点未分配", Line: 2, Status: "unassigned"},
+		{Domain: "local.test", Type: "cname", Target: "local-name.test", Comment: "节点本地别名", Line: 3, Status: "node_only"},
+		{Domain: "pending.test", Type: "address", Target: "192.0.2.3", Comment: "待下发用途", Status: "pending"},
 	}
 	if err != nil || !partial || !reflect.DeepEqual(rows, expected) {
 		t.Fatalf("比较返回 %+v，partial=%v，err=%v", rows, partial, err)
 	}
 	checksum := NodeAddressConfigChecksum(config)
 	updated, err := planNodeAddressRemoval(config, checksum, 2, mappings, 1)
-	want := "address /matched.test/192.0.2.1\n" +
-		"cname /local.test/local-name.test\n" +
+	want := "address /matched.test/192.0.2.1 # 节点原注释\n" +
+		"cname /local.test/local-name.test # 节点本地别名\n" +
 		"address /domain-set:blocklist/#\n" +
 		"address /blocked.test/#\n" +
 		"conf-file /etc/smartdns/custom.conf\n"

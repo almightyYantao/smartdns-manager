@@ -75,6 +75,8 @@ export default function NodeAddressManager({ nodeId, active }) {
 
   const columns = [
     { title: '域名', dataIndex: 'domain', key: 'domain', render: (domain) => <code>{domain}</code> },
+    { title: '备注 / 用途', dataIndex: 'comment', key: 'comment', width: 180, ellipsis: { showTitle: false },
+      render: (comment) => comment ? <Tooltip title={comment}><span>{comment}</span></Tooltip> : '—' },
     { title: '类型', dataIndex: 'type', key: 'type', width: 110,
       render: (type) => <Tag>{type === 'cname' ? 'CNAME' : 'Address'}</Tag> },
     { title: '目标', dataIndex: 'target', key: 'target', render: (target) => <code>{target}</code> },
@@ -128,7 +130,7 @@ export default function NodeAddressManager({ nodeId, active }) {
       </Space>
       {error ? <Alert showIcon type="error" message="无法核对当前节点地址映射，请重新读取。" /> : <>
         {snapshot?.partial && <Alert showIcon type="info" message="仅比较主配置中直接声明的普通 Address 和 CNAME。引用文件、规则组和特殊写法需在配置编辑器核对。" />}
-        <Table columns={columns} dataSource={rows} loading={loading} scroll={{ x: 950 }}
+        <Table columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1130 }}
           rowKey={(row) => row.line ? `line-${row.line}` : `pending-${row.type}-${row.domain}-${row.target}`} />
       </>}
     </Space>
