@@ -3,12 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	_ "encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"smartdns-manager/services"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -18,6 +20,21 @@ import (
 )
 
 var syncService = services.NewConfigSyncService()
+var addressSyncMu sync.Mutex
+
+// 延迟的同步任务读取最新映射，避免把旧节点范围重新下发。
+func syncSavedAddress(id uint) error {
+	addressSyncMu.Lock()
+	defer addressSyncMu.Unlock()
+	var address models.AddressMap
+	if err := database.DB.First(&address, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+	return syncService.SyncAddressToNodes(&address)
+}
 
 // AddAddress 添加地址映射
 func AddAddress(c *gin.Context) {
@@ -103,7 +120,7 @@ func AddAddress(c *gin.Context) {
 
 	// 自动同步到节点
 	go func() {
-		if err := syncService.SyncAddressToNodes(&address); err != nil {
+		if err := syncSavedAddress(address.ID); err != nil {
 			log.Printf("同步到节点失败: %v", err)
 		}
 	}()
@@ -126,6 +143,9 @@ func UpdateAddress(c *gin.Context) {
 		})
 		return
 	}
+
+	addressSyncMu.Lock()
+	defer addressSyncMu.Unlock()
 
 	var address models.AddressMap
 	if err := database.DB.First(&address, addressID).Error; err != nil {
@@ -153,6 +173,7 @@ func UpdateAddress(c *gin.Context) {
 		return
 	}
 
+	previous := address
 	// 更新字段
 	if updateData.Domain != "" {
 		address.Domain = updateData.Domain
@@ -165,6 +186,15 @@ func UpdateAddress(c *gin.Context) {
 	address.NodeIDs = updateData.NodeIDs
 	address.Enabled = updateData.Enabled
 
+	if err := syncService.RemoveAddressFromDeselectedNodes(&previous, &address); err != nil {
+		log.Printf("撤回地址映射失败: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("未能从所有取消选择的节点撤回映射，未保存节点范围，请重试。%v", err),
+		})
+		return
+	}
+
 	if err := database.DB.Save(&address).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -176,7 +206,7 @@ func UpdateAddress(c *gin.Context) {
 
 	// ========== 自动同步到节点 ==========
 	go func() {
-		if err := syncService.SyncAddressToNodes(&address); err != nil {
+		if err := syncSavedAddress(address.ID); err != nil {
 			log.Printf("同步地址映射到节点失败: %v", err)
 		}
 	}()
@@ -304,7 +334,7 @@ func BatchAddAddresses(c *gin.Context) {
 		go func() {
 			log.Printf("开始批量同步 %d 个地址映射到节点", len(addedAddresses))
 			for _, addr := range addedAddresses {
-				if err := syncService.SyncAddressToNodes(&addr); err != nil {
+				if err := syncSavedAddress(addr.ID); err != nil {
 					log.Printf("同步地址映射失败 (%s -> %s): %v", addr.Domain, addr.IP, err)
 				}
 			}
@@ -373,7 +403,7 @@ func ImportAddresses(c *gin.Context) {
 		go func() {
 			log.Printf("开始同步导入的 %d 个地址映射", len(importedAddresses))
 			for _, addr := range importedAddresses {
-				if err := syncService.SyncAddressToNodes(&addr); err != nil {
+				if err := syncSavedAddress(addr.ID); err != nil {
 					log.Printf("同步导入的地址映射失败: %v", err)
 				}
 			}
@@ -428,6 +458,60 @@ func GetAddresses(c *gin.Context) {
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+func GetNodeAddressMappings(c *gin.Context) {
+	node, content, ok := readNodeMainConfig(c)
+	if !ok {
+		return
+	}
+	var mappings []models.AddressMap
+	if err := database.DB.Order("id").Find(&mappings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取控制台地址映射失败"})
+		return
+	}
+	entries, partial, err := services.CompareNodeAddressMappings(content, mappings, node.ID)
+	if err != nil {
+		log.Printf("比较地址映射失败 (节点 %d): %v", node.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "无法核对控制台分配的地址映射"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"mappings": entries, "partial": partial, "checksum": services.NodeAddressConfigChecksum(content),
+	}})
+}
+
+func DeleteNodeAddressMapping(c *gin.Context) {
+	var input struct {
+		Line     int    `json:"line" binding:"required,min=1"`
+		Checksum string `json:"checksum" binding:"required,len=64"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "缺少有效的配置行号或校验值"})
+		return
+	}
+	addressSyncMu.Lock()
+	defer addressSyncMu.Unlock()
+	node, ok := findConfigNode(c)
+	if !ok {
+		return
+	}
+	var mappings []models.AddressMap
+	if err := database.DB.Where("enabled = ?", true).Find(&mappings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取控制台地址映射失败"})
+		return
+	}
+	backup, err := services.RemoveNodeAddressMapping(&node, input.Checksum, input.Line, mappings)
+	if errors.Is(err, services.ErrNodeAddressAssigned) || errors.Is(err, services.ErrNodeAddressChanged) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err != nil {
+		log.Printf("删除节点地址映射失败 (节点 %d): %v", node.ID, err)
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "无法删除当前节点的映射，请检查节点连接和配置写入权限"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"backupPath": backup}})
 }
 
 // 辅助函数：从内容解析地址映射

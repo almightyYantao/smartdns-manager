@@ -123,6 +123,8 @@ func main() {
 		// 配置管理
 		protected.GET("/nodes/:id/config", handlers.GetNodeConfig)
 		protected.POST("/nodes/:id/config", handlers.SaveNodeConfig)
+		protected.GET("/nodes/:id/address-mappings", handlers.GetNodeAddressMappings)
+		protected.DELETE("/nodes/:id/address-mappings", handlers.DeleteNodeAddressMapping)
 		protected.POST("/nodes/:id/restart", handlers.RestartNodeService)
 		protected.GET("/nodes/:id/status", handlers.GetNodeStatus)
 		protected.GET("/nodes/:id/logs", handlers.GetNodeLogs)

@@ -12,6 +12,8 @@ export const restartNodeService = (id) => request.post(`/nodes/${id}/restart`);
 // 配置
 export const getNodeConfig = (id) => request.get(`/nodes/${id}/config`);
 export const saveNodeConfig = (id, data) => request.post(`/nodes/${id}/config`, data);
+export const getNodeAddressMappings = (id) => request.get(`/nodes/${id}/address-mappings`);
+export const deleteNodeAddressMapping = (id, data) => request.delete(`/nodes/${id}/address-mappings`, { data });
 
 // 批量
 export const batchUpdateConfig = (data) => request.post("/nodes/batch/config", data);

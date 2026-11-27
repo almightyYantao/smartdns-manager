@@ -6,6 +6,8 @@ import (
 	"log"
 	"smartdns-manager/database"
 	"smartdns-manager/models"
+	"sort"
+	"strings"
 )
 
 type ConfigSyncService struct {
@@ -53,6 +55,105 @@ func (s *ConfigSyncService) SyncAddressToNodes(address *models.AddressMap) error
 	}
 
 	return nil
+}
+
+// RemoveAddressFromDeselectedNodes 撤回旧范围中被取消的节点，失败时由调用方保留旧范围供重试。
+func (s *ConfigSyncService) RemoveAddressFromDeselectedNodes(previous, updated *models.AddressMap) error {
+	if previous.NodeIDs == updated.NodeIDs {
+		return nil
+	}
+	newNodes, err := s.getTargetNodes(updated.NodeIDs)
+	if err != nil {
+		return fmt.Errorf("无法读取更新后的节点范围")
+	}
+	oldNodes, err := s.getTargetNodes(previous.NodeIDs)
+	if err != nil {
+		return fmt.Errorf("无法读取原节点范围")
+	}
+	retained := make(map[uint]bool, len(newNodes))
+	for _, node := range newNodes {
+		retained[node.ID] = true
+	}
+
+	// 同一条指令可能由另一条映射记录继续下发，例如重复导入后形成的记录。
+	var otherMappings []models.AddressMap
+	if err := database.DB.Where("id <> ? AND domain = ? COLLATE NOCASE AND enabled = ?", previous.ID, previous.Domain, true).
+		Find(&otherMappings).Error; err != nil {
+		return fmt.Errorf("无法核对其余地址映射")
+	}
+	for _, other := range otherMappings {
+		if addressDirective(previous) != addressDirective(&other) {
+			continue
+		}
+		nodes, err := s.getTargetNodes(other.NodeIDs)
+		if err != nil {
+			return fmt.Errorf("无法核对重叠的地址映射范围")
+		}
+		for _, node := range nodes {
+			retained[node.ID] = true
+		}
+	}
+
+	results := make(chan string, len(oldNodes))
+	pending := 0
+	for _, node := range oldNodes {
+		if retained[node.ID] {
+			continue
+		}
+		pending++
+		go func(node models.Node) {
+			if err := withdrawAddressFromNode(previous, &node); err != nil {
+				log.Printf("撤回地址映射失败 (节点 %s): %v", node.Name, err)
+				results <- fmt.Sprintf("%s（#%d）", node.Name, node.ID)
+				return
+			}
+			results <- ""
+		}(node)
+	}
+	var failed []string
+	for range pending {
+		if name := <-results; name != "" {
+			failed = append(failed, name)
+		}
+	}
+	if len(failed) != 0 {
+		sort.Strings(failed)
+		return fmt.Errorf("撤回失败的节点：%s", strings.Join(failed, "、"))
+	}
+	return nil
+}
+
+func withdrawAddressFromNode(address *models.AddressMap, node *models.Node) error {
+	client, err := NewSSHClient(node)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	current, err := client.ReadFile(node.ConfigPath)
+	if err != nil {
+		return err
+	}
+	updated := removeAddressDirective(current, address)
+	if updated == current {
+		return nil
+	}
+	_, err = writeNodeAddressConfig(client, node.ConfigPath, current, updated)
+	return err
+}
+
+func writeNodeAddressConfig(client *SSHClient, path, current, updated string) (string, error) {
+	backup, err := client.CreateBackup(path)
+	if err != nil {
+		return "", fmt.Errorf("备份节点配置: %w", err)
+	}
+	latest, err := client.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if latest != current {
+		return "", ErrNodeAddressChanged
+	}
+	return backup, client.WriteFile(path, updated)
 }
 
 // syncAddressToNode 同步地址映射到单个节点
@@ -425,17 +526,17 @@ func (s *ConfigSyncService) getTargetNodes(nodeIDsJSON string) ([]models.Node, e
 
 	if nodeIDsJSON == "" || nodeIDsJSON == "[]" {
 		// 空表示所有节点
-		database.DB.Find(&nodes)
+		err := database.DB.Find(&nodes).Error
+		return nodes, err
 	} else {
 		// 解析节点ID列表
 		var nodeIDs []uint
 		if err := json.Unmarshal([]byte(nodeIDsJSON), &nodeIDs); err != nil {
 			return nil, err
 		}
-		database.DB.Where("id IN ?", nodeIDs).Find(&nodes)
+		err := database.DB.Where("id IN ?", nodeIDs).Find(&nodes).Error
+		return nodes, err
 	}
-
-	return nodes, nil
 }
 
 // filterConfigForNode 过滤出应用到指定节点的配置

@@ -14,8 +14,8 @@ import (
 	"smartdns-manager/services"
 )
 
-// GetNodeConfig 获取节点配置
-func GetNodeConfig(c *gin.Context) {
+func findConfigNode(c *gin.Context) (models.Node, bool) {
+	var node models.Node
 	id := c.Param("id")
 	nodeID, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
@@ -23,18 +23,24 @@ func GetNodeConfig(c *gin.Context) {
 			"success": false,
 			"message": "无效的节点ID",
 		})
-		return
+		return node, false
 	}
 
-	var node models.Node
 	if err := database.DB.First(&node, nodeID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "节点不存在",
 		})
-		return
+		return node, false
 	}
+	return node, true
+}
 
+func readNodeMainConfig(c *gin.Context) (models.Node, string, bool) {
+	node, ok := findConfigNode(c)
+	if !ok {
+		return node, "", false
+	}
 	// 连接到节点
 	client, err := services.NewSSHClient(&node)
 	if err != nil {
@@ -43,7 +49,7 @@ func GetNodeConfig(c *gin.Context) {
 			"message": "连接节点失败",
 			"error":   err.Error(),
 		})
-		return
+		return node, "", false
 	}
 	defer client.Close()
 
@@ -55,6 +61,16 @@ func GetNodeConfig(c *gin.Context) {
 			"message": "读取配置文件失败",
 			"error":   err.Error(),
 		})
+		return node, "", false
+	}
+
+	return node, content, true
+}
+
+// GetNodeConfig 获取节点配置
+func GetNodeConfig(c *gin.Context) {
+	_, content, ok := readNodeMainConfig(c)
+	if !ok {
 		return
 	}
 
