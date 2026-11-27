@@ -481,11 +481,39 @@ func GetNodeAddressMappings(c *gin.Context) {
 	}})
 }
 
-func DeleteNodeAddressMapping(c *gin.Context) {
-	var input struct {
-		Line     int    `json:"line" binding:"required,min=1"`
-		Checksum string `json:"checksum" binding:"required,len=64"`
+type nodeAddressMappingInput struct {
+	Line     int    `json:"line" binding:"required,min=1"`
+	Checksum string `json:"checksum" binding:"required,len=64"`
+}
+
+func AdoptNodeAddressMapping(c *gin.Context) {
+	var input nodeAddressMappingInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "缺少有效的配置行号或校验值"})
+		return
 	}
+	addressSyncMu.Lock()
+	defer addressSyncMu.Unlock()
+	node, content, ok := readNodeMainConfig(c)
+	if !ok {
+		return
+	}
+	action, err := services.AdoptNodeAddressMapping(database.DB, node.ID, content, input.Checksum, input.Line)
+	if errors.Is(err, services.ErrNodeAddressChanged) || errors.Is(err, services.ErrNodeAddressDisabled) ||
+		errors.Is(err, services.ErrNodeAddressConflict) {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err != nil {
+		log.Printf("纳入全局地址映射失败 (节点 %d): %v", node.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "无法纳入全局地址映射"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"action": action}})
+}
+
+func DeleteNodeAddressMapping(c *gin.Context) {
+	var input nodeAddressMappingInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "缺少有效的配置行号或校验值"})
 		return

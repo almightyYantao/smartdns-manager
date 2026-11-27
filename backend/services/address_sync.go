@@ -10,11 +10,15 @@ import (
 	"slices"
 	"strings"
 
+	"gorm.io/gorm"
+
 	"smartdns-manager/models"
 )
 
 var ErrNodeAddressChanged = errors.New("节点配置已变化，请重新读取后重试")
 var ErrNodeAddressAssigned = errors.New("该映射在此节点已由控制台分配，不能在这里删除")
+var ErrNodeAddressDisabled = errors.New("相同的全局映射已停用，请先在全局地址映射中确认其启用范围")
+var ErrNodeAddressConflict = errors.New("当前节点已分配同域名、不同类型或目标的映射，请先处理冲突")
 var ordinaryAddressDomain = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.?$`)
 
 func ordinaryAddressMapping(mapping models.AddressMap) bool {
@@ -177,6 +181,76 @@ func addressAssignedToNode(mapping models.AddressMap, nodeID uint) (bool, error)
 
 func NodeAddressConfigChecksum(config string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(config)))
+}
+
+// AdoptNodeAddressMapping 将节点上已有的指令登记到控制台，保留现有记录和其他节点的范围。
+func AdoptNodeAddressMapping(db *gorm.DB, nodeID uint, config, checksum string, line int) (string, error) {
+	if NodeAddressConfigChecksum(config) != checksum {
+		return "", ErrNodeAddressChanged
+	}
+	entries, _ := parseAddressDirectives(strings.Split(config, "\n"))
+	for _, entry := range entries {
+		if entry.line+1 == line && ordinaryAddressMapping(entry.mapping) {
+			return assignNodeAddressMapping(db, nodeID, entry.mapping)
+		}
+	}
+	return "", ErrNodeAddressChanged
+}
+
+func assignNodeAddressMapping(db *gorm.DB, nodeID uint, mapping models.AddressMap) (string, error) {
+	var action string
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var existing []models.AddressMap
+		if err := tx.Where("domain = ? COLLATE NOCASE", mapping.Domain).Order("id").Find(&existing).Error; err != nil {
+			return err
+		}
+		var reusable *models.AddressMap
+		var disabledMatch, conflict bool
+		key := addressDirective(&mapping)
+		for _, candidate := range existing {
+			same := addressDirective(&candidate) == key
+			if !candidate.Enabled {
+				disabledMatch = disabledMatch || same
+				continue
+			}
+			assigned, err := addressAssignedToNode(candidate, nodeID)
+			if err != nil {
+				return err
+			}
+			switch {
+			case same && assigned:
+				action = "already_assigned"
+				return nil
+			case same && reusable == nil:
+				reusable = &candidate
+			case !same && assigned:
+				conflict = true
+			}
+		}
+		if conflict {
+			return ErrNodeAddressConflict
+		}
+		if reusable != nil {
+			var ids []uint
+			if err := json.Unmarshal([]byte(reusable.NodeIDs), &ids); err != nil {
+				return err
+			}
+			newScope, err := json.Marshal(append(ids, nodeID))
+			if err != nil {
+				return err
+			}
+			action = "assigned"
+			return tx.Model(reusable).Update("node_ids", string(newScope)).Error
+		}
+		if disabledMatch {
+			return ErrNodeAddressDisabled
+		}
+		mapping.Enabled = true
+		mapping.NodeIDs = fmt.Sprintf("[%d]", nodeID)
+		action = "created"
+		return tx.Create(&mapping).Error
+	})
+	return action, err
 }
 
 func planNodeAddressRemoval(config, checksum string, line int, mappings []models.AddressMap, nodeID uint) (string, error) {

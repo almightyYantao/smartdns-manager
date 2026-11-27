@@ -10,6 +10,7 @@ import {
   Spin,
   Alert,
   Descriptions,
+  Typography,
 } from 'antd';
 import {
   SaveOutlined,
@@ -247,18 +248,15 @@ const NodeConfig = () => {
 
   return (
     <div>
+      <Space direction="vertical" size={10} style={{ marginBottom: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/nodes')}>
+          返回节点管理
+        </Button>
+        <Typography.Title level={3} style={{ margin: 0, overflowWrap: 'anywhere' }}>
+          {node?.name ? `${node.name} · 节点配置` : '节点配置'}
+        </Typography.Title>
+      </Space>
       <Card
-        title={
-          <Space>
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate('/nodes')}
-            />
-            <span>节点配置管理</span>
-            {node && <span style={{ color: '#999' }}>- {node.name}</span>}
-          </Space>
-        }
         extra={
           node && (
             <Descriptions size="small" column={3}>

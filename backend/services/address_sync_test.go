@@ -5,8 +5,65 @@ import (
 	"reflect"
 	"testing"
 
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
 	"smartdns-manager/models"
 )
+
+func TestAdoptNodeAddressMapping(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/addresses.db"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.AddressMap{}); err != nil {
+		t.Fatal(err)
+	}
+	original := []models.AddressMap{
+		{Domain: "existing.test", IP: "192.0.2.1", NodeIDs: "[2,3]", Comment: "保留备注", Enabled: true},
+		{Domain: "different.test", IP: "192.0.2.2", NodeIDs: "[2]", Enabled: true},
+		{Domain: "conflict.test", IP: "192.0.2.2", NodeIDs: "[1]", Enabled: true},
+		{Domain: "disabled.test", IP: "192.0.2.1", NodeIDs: "[]", Enabled: true},
+	}
+	if err := db.Create(&original).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&original[3]).Update("enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		config string
+		action string
+		err    error
+	}{
+		{"address /Existing.Test/192.0.2.1", "assigned", nil},
+		{"address /existing.test/192.0.2.1", "already_assigned", nil},
+		{"cname /new.test/alias.test", "created", nil},
+		{"address /different.test/192.0.2.1", "created", nil},
+		{"address /conflict.test/192.0.2.1", "", ErrNodeAddressConflict},
+		{"address /disabled.test/192.0.2.1", "", ErrNodeAddressDisabled},
+		{"address /policy.test/#", "", ErrNodeAddressChanged},
+	} {
+		action, err := AdoptNodeAddressMapping(db, 1, tc.config, NodeAddressConfigChecksum(tc.config), 1)
+		if action != tc.action || !errors.Is(err, tc.err) {
+			t.Errorf("%s: action=%q err=%v，预期 %q %v", tc.config, action, err, tc.action, tc.err)
+		}
+	}
+	const change = "address /stale.test/192.0.2.1"
+	if _, err := AdoptNodeAddressMapping(db, 1, change, NodeAddressConfigChecksum("原配置"), 1); !errors.Is(err, ErrNodeAddressChanged) {
+		t.Fatal(err)
+	}
+	var all []models.AddressMap
+	if err := db.Order("id").Find(&all).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 6 || all[0].NodeIDs != "[2,3,1]" || all[0].Comment != "保留备注" ||
+		all[1].NodeIDs != "[2]" || all[3].Enabled || all[4].NodeIDs != "[1]" || all[4].Type != "cname" ||
+		all[5].NodeIDs != "[1]" {
+		t.Fatalf("纳入操作改变了其他配置: %+v", all)
+	}
+}
 
 func TestRemoveAddressDirective(t *testing.T) {
 	const shared = "# 另一条映射及同域名的其他指令保持原样\r\n" +
