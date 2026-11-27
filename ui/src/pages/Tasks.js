@@ -40,6 +40,7 @@ import {
 } from "@ant-design/icons";
 import {
   getTasks,
+  getTelemetryTargets,
   createTask,
   updateTask,
   deleteTask,
@@ -68,6 +69,11 @@ const Tasks = () => {
   const [stats, setStats] = useState({});
   const [templates, setTemplates] = useState([]);
   const [form] = Form.useForm();
+  const taskType = Form.useWatch("type", form);
+  const [telemetryTargets, setTelemetryTargets] = useState(null);
+  useEffect(() => {
+    if (taskType === "telemetry") getTelemetryTargets().then(({ data }) => setTelemetryTargets(data || [])).catch(() => {});
+  }, [taskType]);
 
   // 任务类型图标映射
   const typeIcons = {
@@ -299,6 +305,9 @@ SmartDNS重启：
     form.setFieldsValue({
       ...task,
       config: configValue,
+      telemetryTargets: task.type === "telemetry" ? (() => {
+        try { return JSON.parse(configValue).targets || []; } catch { return []; }
+      })() : [],
     });
   };
 
@@ -348,8 +357,16 @@ SmartDNS重启：
         }
       }
 
+      const { telemetryTargets: selectedTargets, ...taskValues } = values;
+      if (values.type === "telemetry") {
+        if (!selectedTargets?.length && !(editingTask?.type === "telemetry" && !config.targets?.length)) {
+          message.error("请选择遥测目标");
+          return;
+        }
+        config.targets = selectedTargets || [];
+      }
       const data = {
-        ...values,
+        ...taskValues,
         config: JSON.stringify(config),
       };
 
@@ -717,12 +734,20 @@ SmartDNS重启：
             <TextArea rows={2} placeholder="任务描述" />
           </Form.Item>
 
-          <Form.Item name="config" label="配置 (JSON格式)">
+          {taskType === "telemetry" && (
+            <Form.Item name="telemetryTargets" label="遥测目标"
+              extra="旧任务留空时继续按原有目标范围执行。"
+              rules={[{ required: editingTask?.type !== "telemetry", message: "请选择遥测目标" }]}>
+              <Select mode="multiple" optionFilterProp="label" loading={!telemetryTargets}
+                options={(telemetryTargets || []).map((target) => ({ value: target.id, label: `${target.name}（${target.type.toUpperCase()}）` }))} />
+            </Form.Item>
+          )}
+          <Form.Item name="config" label="配置 (JSON格式)" hidden={taskType === "telemetry"}>
             <TextArea rows={8} placeholder='{"key": "value"}' />
           </Form.Item>
 
           {/* 根据任务类型显示配置示例 */}
-          {form.getFieldValue("type") && (
+          {taskType && taskType !== "telemetry" && (
             <div style={{ marginTop: 8 }}>
               <Text type="secondary" style={{ fontSize: "12px" }}>
                 配置示例：

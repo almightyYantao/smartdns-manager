@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -16,9 +17,10 @@ import (
 
 // TelemetryService 遥测服务
 type TelemetryService struct {
-	db     *gorm.DB
-	config *config.Config
-	client *http.Client
+	db          *gorm.DB
+	config      *config.Config
+	client      *http.Client
+	scheduledMu sync.Mutex
 }
 
 // NewTelemetryService 创建遥测服务
@@ -57,12 +59,19 @@ func NewTelemetryService(db *gorm.DB, config *config.Config) (*TelemetryService,
 
 // CheckTargets 检查遥测目标
 func (s *TelemetryService) CheckTargets(ctx context.Context, config models.TelemetryConfig) (string, error) {
+	s.scheduledMu.Lock()
+	defer s.scheduledMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	// 获取要检查的目标
 	var targets []models.TelemetryTarget
 	query := s.db.Where("enabled = ?", true)
 	
 	if len(config.Targets) > 0 {
 		query = query.Where("id IN ?", config.Targets)
+	} else if !config.IncludeDNS {
+		query = query.Where("type <> ?", "dns")
 	}
 	
 	if err := query.Find(&targets).Error; err != nil {
@@ -100,21 +109,23 @@ func (s *TelemetryService) CheckTargets(ctx context.Context, config models.Telem
 				target.Name, statusIcon, result.Latency))
 			log.Printf("✅ 遥测检查成功 [%s]: 延迟 %dms", target.Name, result.Latency)
 		}
-		
-		// 保存检查结果（总是保存，无论成功失败）
-		if saveErr := s.saveResult(target, result, err); saveErr != nil {
-			log.Printf("❌ 保存遥测结果失败 [%s]: %v", target.Name, saveErr)
-		} else {
-			log.Printf("📝 遥测结果已保存 [%s]", target.Name)
+
+		if ctx.Err() != nil {
+			return strings.Join(results, "; "), ctx.Err()
 		}
-		
-		// 更新目标统计
-		if statsErr := s.updateTargetStats(target, result, err); statsErr != nil {
-			log.Printf("❌ 更新目标统计失败 [%s]: %v", target.Name, statsErr)
+		if target.Type == "dns" {
+			if err := s.saveScheduledDNSResult(target, result); err != nil {
+				return strings.Join(results, "; "), err
+			}
 		} else {
-			log.Printf("📊 目标统计已更新 [%s]", target.Name)
+			if saveErr := s.saveResult(target, result, err); saveErr != nil {
+				return strings.Join(results, "; "), saveErr
+			}
+			if statsErr := s.updateTargetStats(target, result, err); statsErr != nil {
+				return strings.Join(results, "; "), statsErr
+			}
 		}
-		
+
 		// 检查上下文是否取消
 		select {
 		case <-ctx.Done():
@@ -136,7 +147,10 @@ func (s *TelemetryService) CheckTargets(ctx context.Context, config models.Telem
 	if len(results) > 0 {
 		summary += "; 详情: " + strings.Join(results, "; ")
 	}
-	
+
+	if successCount < len(targets) {
+		return summary, fmt.Errorf("%d 个遥测目标检测失败", len(targets)-successCount)
+	}
 	return summary, nil
 }
 
@@ -147,6 +161,28 @@ func (s *TelemetryService) CheckSingleTarget(ctx context.Context, target models.
 		CheckedAt: time.Now(),
 	}
 	
+	if target.Type == "dns" {
+		if err := ValidateDNSProbe(target); err != nil {
+			result.Error = err.Error()
+			return result, err
+		}
+		timeout := time.Duration(target.Timeout) * time.Millisecond
+		if timeout <= 0 || timeout > 5*time.Second {
+			timeout = 2*time.Second
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		start := time.Now()
+		response, err := probeDNS(probeCtx, net.JoinHostPort(strings.TrimSpace(target.Target), "53"), target)
+		result.Response = response
+		result.Latency = time.Since(start).Milliseconds()
+		result.Success = err == nil
+		if err != nil {
+			result.Error = err.Error()
+		}
+		return result, err
+	}
+
 	// 优化超时设置，最小3秒，最大30秒
 	timeout := time.Duration(target.Timeout) * time.Millisecond
 	if timeout == 0 || timeout < 3*time.Second {
@@ -526,7 +562,7 @@ func (s *TelemetryService) cleanupResults(retentionDays int) error {
 	// 先查询将要删除的记录数
 	var countToDelete int64
 	if err := s.db.Model(&models.TelemetryResult{}).
-		Where("created_at < ?", cutoff).
+		Where("created_at < ? AND target_id NOT IN (?)", cutoff, s.db.Unscoped().Model(&models.TelemetryTarget{}).Select("id").Where("type = ?", "dns")).
 		Count(&countToDelete).Error; err != nil {
 		return fmt.Errorf("查询待删除记录数失败: %w", err)
 	}
@@ -537,7 +573,7 @@ func (s *TelemetryService) cleanupResults(retentionDays int) error {
 	}
 	
 	// 执行删除
-	result := s.db.Where("created_at < ?", cutoff).Delete(&models.TelemetryResult{})
+	result := s.db.Where("created_at < ? AND target_id NOT IN (?)", cutoff, s.db.Unscoped().Model(&models.TelemetryTarget{}).Select("id").Where("type = ?", "dns")).Delete(&models.TelemetryResult{})
 	if result.Error != nil {
 		return fmt.Errorf("删除过期记录失败: %w", result.Error)
 	}

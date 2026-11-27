@@ -80,6 +80,12 @@ type TelemetryTarget struct {
 	Enabled     bool   `json:"enabled" gorm:"default:true;comment:是否启用"`
 	Description string `json:"description" gorm:"size:500;comment:描述"`
 	
+	DNSName        string     `json:"dns_name" gorm:"size:253"`
+	DNSExpectedA   string     `json:"dns_expected_a" gorm:"size:15"`
+	DNSLastSuccess *time.Time `json:"dns_last_success"`
+	DNSAlerting    bool       `json:"dns_alerting" gorm:"default:false"`
+	DNSStreak      int        `json:"-" gorm:"default:0"`
+
 	// 统计信息
 	LastCheckAt    *time.Time `json:"last_check_at" gorm:"comment:上次检测时间"`
 	LastLatency    int64      `json:"last_latency" gorm:"comment:上次延迟(毫秒)"`
@@ -174,6 +180,7 @@ type LogCleanupConfig struct {
 
 // TelemetryConfig 遥测任务配置
 type TelemetryConfig struct {
+	IncludeDNS      bool   `json:"include_dns,omitempty"`
 	Targets         []uint `json:"targets"`          // 遥测目标ID列表，空表示所有启用的目标
 	ResultRetention int    `json:"result_retention"` // 结果保留天数
 	AlertThreshold  int    `json:"alert_threshold"`  // 连续失败告警阈值

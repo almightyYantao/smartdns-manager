@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import MainLayout from "./components/Layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import Nodes from "./pages/Nodes";
+import CoreUpgrades from "./pages/CoreUpgrades";
 import Addresses from "./pages/Addresses";
 import Servers from "./pages/Servers";
 import NodeConfig from "./pages/NodeConfig";
@@ -53,6 +54,7 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="nodes" element={<Nodes />} />
+              <Route path="upgrades" element={<CoreUpgrades />} />
               <Route path="nodes/:id/config" element={<NodeConfig />} />
               <Route path="addresses" element={<Addresses />} />
               <Route path="backup" element={<Backup />} />

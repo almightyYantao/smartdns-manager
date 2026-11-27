@@ -163,7 +163,7 @@ func (checker *NodeHealthChecker) executeBatchUpdate(updates []*nodeStatusUpdate
 func (checker *NodeHealthChecker) checkAllNodes() {
 	var nodes []models.Node
 	// 只查询必要的字段
-	if err := database.DB.Select("id, name, host, port, username, password, config_path, status").Find(&nodes).Error; err != nil {
+	if err := database.DB.Select("id, name, host, port, username, password, private_key, config_path, status").Find(&nodes).Error; err != nil {
 		log.Printf("获取节点列表失败: %v", err)
 		return
 	}

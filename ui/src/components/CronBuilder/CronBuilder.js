@@ -18,6 +18,7 @@ const CronBuilder = ({ value, onChange }) => {
 
   // 预设的常用Cron表达式
   const presets = {
+    'every-30-seconds': { expr: '*/30 * * * * *', desc: '每30秒执行' },
     'every-minute': { expr: '0 * * * * ?', desc: '每分钟执行' },
     'every-5-minutes': { expr: '0 */5 * * * ?', desc: '每5分钟执行' },
     'every-10-minutes': { expr: '0 */10 * * * ?', desc: '每10分钟执行' },

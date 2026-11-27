@@ -38,3 +38,102 @@
   background: #fff;
   border-radius: 8px;
 }
+.header-brand,
+.account-button.ant-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.operation-identity {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  .site-layout-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: 56px;
+    padding: 0 12px;
+  }
+
+  .site-layout-content {
+    margin: 0;
+    min-width: 0;
+  }
+
+  .content-wrapper {
+    padding: 12px;
+    background: #f0f2f5;
+    border-radius: 0;
+    overflow-x: auto;
+  }
+
+  .operations-page {
+    overflow-wrap: anywhere;
+  }
+
+  .operations-page > .ant-card-head,
+  .operations-page > .ant-card-body,
+  .operations-stats .ant-card-body {
+    padding-inline: 12px;
+  }
+
+  .operations-stats .ant-statistic-content {
+    font-size: 19px;
+  }
+
+  .operation-list {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+  }
+
+  .operation-item {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    overflow-wrap: anywhere;
+  }
+
+  .operation-row,
+  .operation-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .operation-footer > .ant-btn-primary {
+    flex: 1;
+  }
+
+  .header-content .ant-btn,
+  .operations-page .ant-btn,
+  .operation-sheet .ant-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .operation-sheet .ant-drawer-content-wrapper {
+    max-height: 88vh;
+    max-height: 88dvh;
+  }
+
+  .operation-sheet .ant-drawer-content {
+    border-radius: 16px 16px 0 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .operation-sheet .ant-drawer-footer {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+}

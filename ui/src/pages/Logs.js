@@ -135,7 +135,7 @@ const Logs = () => {
         extra={
           <Space>
             <Select
-              style={{ width: 200 }}
+              style={{ width: 272, maxWidth: "100%" }}
               placeholder="选择节点"
               value={selectedNode}
               onChange={setSelectedNode}
@@ -148,7 +148,7 @@ const Logs = () => {
                     <Badge
                       status={node.status === 'online' ? 'success' : 'error'}
                     />
-                    {node.name}
+                    {node.name}{node.host ? ` · ${node.host}` : ""}
                   </Space>
                 </Option>
               ))}

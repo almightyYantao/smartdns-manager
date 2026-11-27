@@ -53,7 +53,6 @@ const NodeList = () => {
   const [selectedSyncNode, setSelectedSyncNode] = useState(null);
   const [initModalVisible, setInitModalVisible] = useState(false);
   const [selectedInitNode, setSelectedInitNode] = useState(null);
-
   const handleInitNode = (node) => {
     setSelectedInitNode(node);
     setInitModalVisible(true);

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -14,6 +15,7 @@ import {
   message,
   Popconfirm,
   Descriptions,
+  Dropdown,
   Drawer,
   Statistic,
   Row,
@@ -21,7 +23,7 @@ import {
   Typography,
   Tooltip,
   Badge,
-  Divider,
+  List,
   Alert,
   Tabs,
 } from "antd";
@@ -29,13 +31,11 @@ import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  PlayCircleOutlined,
   EyeOutlined,
   HistoryOutlined,
   RadarChartOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
-  ExclamationCircleOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import {
@@ -48,14 +48,26 @@ import {
   testTelemetryTarget,
 } from "../api/modules/scheduler";
 
+import useMobile from "../utils/useMobile";
+
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 const { TabPane } = Tabs;
 
+function dnsStatus(target) {
+  const checkedAt = Date.parse(target.last_check_at);
+  if (!checkedAt) return { status: "default", text: "无数据" };
+  if (target.dns_alerting || !target.last_status) return { status: "error", text: "异常" };
+  return { status: "success", text: "正常" };
+}
+
 const Telemetry = () => {
+  const mobile = useMobile();
   const [targets, setTargets] = useState([]);
   const [results, setResults] = useState([]);
+  const [loadingResults, setLoadingResults] = useState(false);
+  const [resultsError, setResultsError] = useState(false);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -65,6 +77,8 @@ const Telemetry = () => {
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [testingTargets, setTestingTargets] = useState(new Set());
   const [form] = Form.useForm();
+  const targetType = Form.useWatch("type", form);
+
 
   // 检测类型配置
   const typeOptions = [
@@ -82,6 +96,11 @@ const Telemetry = () => {
       value: "https",
       label: "HTTPS检测",
       description: "HTTPS协议检测，默认端口443",
+    },
+    {
+      value: "dns",
+      label: "DNS 拨测",
+      description: "由控制台后端直接查询指定服务器的 UDP/53",
     },
     {
       value: "tcp",
@@ -132,19 +151,21 @@ const Telemetry = () => {
   useEffect(() => {
     fetchTargets();
     fetchStats();
-    fetchResults();
+    const timer = setInterval(() => {
+      fetchTargets(false);
+    }, 15000);
+    return () => clearInterval(timer);
   }, []);
 
-  const fetchTargets = async () => {
-    setLoading(true);
+  const fetchTargets = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const response = await getTelemetryTargets();
       setTargets(response.data || []);
     } catch (error) {
-      message.error("获取遥测目标失败");
-      setTargets([]);
+      if (showLoading) message.error("获取遥测目标失败");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -158,19 +179,21 @@ const Telemetry = () => {
     }
   };
 
-  const fetchResults = async (targetId = null) => {
-    try {
-      const params = targetId
-        ? { target_id: targetId }
-        : { page: 1, pageSize: 50 };
-      const response = await getTelemetryResults(params);
-      const resultsData = response.data?.results || response.data || [];
-      setResults(Array.isArray(resultsData) ? resultsData : []);
-    } catch (error) {
-      console.error("获取遥测结果失败:", error);
-      setResults([]);
-    }
-  };
+  const historyTargetId = resultsVisible ? selectedTarget?.id : null;
+  useEffect(() => {
+    if (historyTargetId == null) return;
+    let active = true;
+    getTelemetryResults({ target_id: historyTargetId }).then((response) => {
+      if (!active) return;
+      const data = response.data?.results || response.data || [];
+      setResults(Array.isArray(data) ? data : []);
+    }).catch(() => {
+      if (active) setResultsError(true);
+    }).finally(() => {
+      if (active) setLoadingResults(false);
+    });
+    return () => { active = false; };
+  }, [historyTargetId]);
 
   const handleCreateTarget = () => {
     setEditingTarget(null);
@@ -186,6 +209,7 @@ const Telemetry = () => {
   const handleEditTarget = (target) => {
     setEditingTarget(target);
     setModalVisible(true);
+    form.resetFields();
     form.setFieldsValue(target);
   };
 
@@ -212,14 +236,13 @@ const Telemetry = () => {
       const result = response.data;
 
       if (result.success) {
-        message.success(`测试成功！延迟: ${result.latency}ms`);
+        message.success(`测试成功 · ${result.latency}ms${result.response ? ` · ${result.response}` : ""}`);
       } else {
         message.error(`测试失败: ${result.error || "未知错误"}`);
       }
 
       // 刷新数据
       fetchTargets();
-      fetchResults();
       fetchStats();
     } catch (error) {
       message.error(
@@ -269,7 +292,7 @@ const Telemetry = () => {
       fetchTargets();
       fetchStats();
     } catch (error) {
-      message.error(editingTarget ? "更新失败" : "创建失败");
+      message.error(error.response?.data?.message || (editingTarget ? "更新失败" : "创建失败"));
     }
   };
 
@@ -287,7 +310,9 @@ const Telemetry = () => {
 
   const showResults = (target) => {
     setSelectedTarget(target);
-    fetchResults(target.id);
+    setResults([]);
+    setResultsError(false);
+    setLoadingResults(true);
     setResultsVisible(true);
   };
 
@@ -297,6 +322,7 @@ const Telemetry = () => {
       http: "#1890ff",
       https: "#722ed1",
       tcp: "#fa8c16",
+      dns: "#13a8a8",
     };
     return colors[type] || "#666";
   };
@@ -325,7 +351,14 @@ const Telemetry = () => {
       title: "目标地址",
       dataIndex: "target",
       key: "target",
-      render: (text) => <code>{text}</code>,
+      render: (text, record) => (
+        <Space direction="vertical" size={0}>
+          <code>{text}{record.type === "dns" ? " · UDP/53" : ""}</code>
+          {record.type === "dns" && (
+            <Text type="secondary">{record.dns_name} → {record.dns_expected_a}</Text>
+          )}
+        </Space>
+      ),
     },
     {
       title: "超时设置",
@@ -347,7 +380,13 @@ const Telemetry = () => {
             status={record.enabled ? "success" : "default"}
             text={record.enabled ? "启用" : "禁用"}
           />
-          {record.last_check_at && (
+          {record.enabled && (record.schedules?.length ? record.schedules.map((task) => (
+            <Text key={task.id} type="secondary">
+              <Link to="/tasks">{task.name}</Link>{!task.enabled ? " · 已暂停" : task.next_run_at ? ` · ${new Date(task.next_run_at).toLocaleString()}` : ""}
+            </Text>
+          )) : <Link to="/tasks">未配置定时任务</Link>)}
+          {record.type === "dns" && record.enabled && <Badge {...dnsStatus(record)} />}
+          {record.type !== "dns" && record.last_check_at && (
             <Badge
               status={record.last_status ? "success" : "error"}
               text={record.last_status ? "正常" : "异常"}
@@ -369,6 +408,9 @@ const Telemetry = () => {
               成功率:{" "}
               {((record.success_count / record.check_count) * 100).toFixed(1)}%
             </Text>
+          )}
+          {record.type === "dns" && record.dns_last_success && (
+            <Text type="secondary">最近成功 {new Date(record.dns_last_success).toLocaleString()}</Text>
           )}
           {record.last_check_at && (
             <Text type="secondary">
@@ -466,8 +508,8 @@ const Telemetry = () => {
   return (
     <div>
       {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={6}>
+      <Row className="operations-stats" gutter={[ mobile ? 8 : 16, 8 ]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="总目标数"
@@ -476,7 +518,7 @@ const Telemetry = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="在线目标"
@@ -486,7 +528,7 @@ const Telemetry = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="平均延迟"
@@ -497,7 +539,7 @@ const Telemetry = () => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} sm={12} md={6}>
           <Card>
             <Statistic
               title="成功率"
@@ -515,6 +557,7 @@ const Telemetry = () => {
       {/* 遥测目标列表 */}
       <Card
         title="遥测目标管理"
+        className="operations-page"
         extra={
           <Button
             type="primary"
@@ -525,13 +568,32 @@ const Telemetry = () => {
           </Button>
         }
       >
-        <Table
-          columns={columns}
-          dataSource={targets}
+        {mobile ? <List
+          split={false}
           loading={loading}
+          dataSource={targets}
           rowKey="id"
-          pagination={{ pageSize: 10 }}
-        />
+          pagination={{ pageSize: 10, size: "small", hideOnSinglePage: true, showSizeChanger: false }}
+          renderItem={(target) => <List.Item className="operation-item" style={{ display: "grid", padding: 12, marginBottom: 10 }}>
+            <div className="operation-row">
+              <strong>{target.name}</strong>
+              {target.enabled ? <Badge {...dnsStatus(target)} /> : <Badge status="default" text="禁用" />}
+            </div>
+            <div>{columns[1].render(target.type)}{columns[2].render(target.target, target)}</div>
+            <Text type="secondary">{target.last_check_at ? new Date(target.last_check_at).toLocaleString() : "尚未检测"}
+              {target.last_status && target.last_latency != null ? ` · ${target.last_latency} ms` : ""}
+            </Text>
+            <div className="operation-row">
+              <Button onClick={() => showResults(target)}>检测历史</Button>
+              <Dropdown trigger={["click"]} menu={{ items: [
+                { key: "details", label: "目标详情", onClick: () => showTargetDetail(target) },
+                { key: "test", label: "手动测试", disabled: testingTargets.has(target.id), onClick: () => handleTestTarget(target.id) },
+                { key: "edit", label: "编辑目标", onClick: () => handleEditTarget(target) },
+              ] }}><Button>更多</Button></Dropdown>
+            </div>
+          </List.Item>}
+        /> : <Table columns={columns} dataSource={targets} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />}
+
       </Card>
 
       {/* 创建/编辑目标对话框 */}
@@ -579,7 +641,13 @@ const Telemetry = () => {
                 label="检测类型"
                 rules={[{ required: true, message: "请选择检测类型" }]}
               >
-                <Select placeholder="请选择检测类型">
+                <Select
+                  placeholder="请选择检测类型"
+                  onChange={(type) => {
+                    const timeout = form.getFieldValue("timeout");
+                    if (type === "dns" && (!timeout || timeout > 5000)) form.setFieldValue("timeout", 2000);
+                  }}
+                >
                   {typeOptions.map((option) => (
                     <Option key={option.value} value={option.value}>
                       <span>{option.label}</span>
@@ -596,22 +664,34 @@ const Telemetry = () => {
 
               <Form.Item
                 name="target"
-                label="目标地址"
+                label={targetType === "dns" ? "DNS 服务器 IP" : "目标地址"}
                 rules={[{ required: true, message: "请输入目标地址" }]}
-                extra="根据检测类型填写相应格式的地址"
+                extra={targetType === "dns" ? "固定使用 UDP/53" : "根据检测类型填写相应格式的地址"}
               >
-                <Input placeholder="例如: 8.8.8.8 或 baidu.com 或 192.168.1.1:80" />
+                <Input placeholder={targetType === "dns" ? "例如 192.0.2.53" : "例如 8.8.8.8 或 baidu.com 或 192.168.1.1:80"} />
               </Form.Item>
+
+              {targetType === "dns" && (
+                <>
+                  <Form.Item name="dns_name" label="查询域名" rules={[{ required: true, whitespace: true, message: "请输入查询域名" }]}>
+                    <Input placeholder="例如 example.com" />
+                  </Form.Item>
+                  <Form.Item name="dns_expected_a" label="预期 A 记录" rules={[{ required: true, whitespace: true, message: "请输入预期 IPv4 地址" }]}>
+                    <Input placeholder="例如 192.0.2.10" />
+                  </Form.Item>
+                  <Text type="secondary">在任务管理中设置查询周期。连续失败 3 次告警，连续成功 2 次恢复。</Text>
+                </>
+              )}
 
               <Form.Item
                 name="timeout"
                 label="超时时间 (毫秒)"
                 rules={[{ required: true, message: "请输入超时时间" }]}
-                extra="建议范围：1000-60000毫秒"
+                extra={targetType === "dns" ? "范围 1000–5000 毫秒" : "建议范围 1000–60000 毫秒"}
               >
                 <InputNumber
                   min={1000}
-                  max={60000}
+                  max={targetType === "dns" ? 5000 : 60000}
                   step={1000}
                   style={{ width: "100%" }}
                   placeholder="10000"
@@ -632,7 +712,7 @@ const Telemetry = () => {
                 <Title level={5}>选择预设模板</Title>
                 <Row gutter={[16, 16]}>
                   {presetTemplates.map((template, index) => (
-                    <Col span={12} key={index}>
+                    <Col xs={24} sm={12} key={index}>
                       <Card
                         size="small"
                         title={template.name}
@@ -675,6 +755,9 @@ const Telemetry = () => {
       <Drawer
         title="遥测目标详情"
         width={600}
+        height={mobile ? "80dvh" : undefined}
+        placement={mobile ? "bottom" : "right"}
+        rootClassName={mobile ? "operation-sheet" : undefined}
         open={detailVisible}
         onClose={() => setDetailVisible(false)}
       >
@@ -691,6 +774,13 @@ const Telemetry = () => {
             <Descriptions.Item label="目标地址">
               <code>{selectedTarget.target}</code>
             </Descriptions.Item>
+            {selectedTarget.type === "dns" && <>
+              <Descriptions.Item label="查询域名">{selectedTarget.dns_name}</Descriptions.Item>
+              <Descriptions.Item label="预期 A 记录">{selectedTarget.dns_expected_a}</Descriptions.Item>
+            </>}
+            {mobile && <Descriptions.Item label="定时任务">
+              {columns[4].render(null, selectedTarget)}
+            </Descriptions.Item>}
             <Descriptions.Item label="超时设置">
               {selectedTarget.timeout}ms
             </Descriptions.Item>
@@ -713,7 +803,9 @@ const Telemetry = () => {
                 : "未检测"}
             </Descriptions.Item>
             <Descriptions.Item label="最后状态">
-              {selectedTarget.last_status !== undefined ? (
+              {selectedTarget.type === "dns" ? (
+                <Badge {...dnsStatus(targets.find((target) => target.id === selectedTarget.id) || selectedTarget)} />
+              ) : selectedTarget.last_check_at ? (
                 <Badge
                   status={selectedTarget.last_status ? "success" : "error"}
                   text={selectedTarget.last_status ? "正常" : "异常"}
@@ -734,22 +826,47 @@ const Telemetry = () => {
             )}
           </Descriptions>
         )}
+        {mobile && selectedTarget && <div style={{ marginTop: 16 }}>
+          <Popconfirm title="确定删除这个遥测目标吗？" onConfirm={async () => {
+            await handleDeleteTarget(selectedTarget.id);
+            setDetailVisible(false);
+          }}>
+            <Button danger>删除目标</Button>
+          </Popconfirm>
+        </div>}
       </Drawer>
 
       {/* 检测历史抽屉 */}
       <Drawer
         title="检测历史"
         width={900}
+        height={mobile ? "80dvh" : undefined}
+        placement={mobile ? "bottom" : "right"}
+        rootClassName={mobile ? "operation-sheet" : undefined}
         open={resultsVisible}
         onClose={() => setResultsVisible(false)}
       >
-        <Table
-          columns={resultColumns}
+        {mobile && selectedTarget && <p className="operation-identity"><strong>{selectedTarget.name}</strong> · {selectedTarget.target}
+          {selectedTarget.type === "dns" && <> · UDP/53 · {selectedTarget.dns_name}</>}
+        </p>}
+        {resultsError ? <Alert type="error" showIcon message="读取检测历史失败，请关闭后重试" /> : mobile ? <List
+          split={false}
+          loading={loadingResults}
           dataSource={results}
           rowKey="id"
-          pagination={{ pageSize: 20 }}
-          size="small"
-        />
+          pagination={{ pageSize: 20, size: "small", hideOnSinglePage: true, showSizeChanger: false }}
+          renderItem={(result) => <List.Item className="operation-item" style={{ display: "grid", padding: 12, marginBottom: 10 }}>
+            <div className="operation-row">
+              {resultColumns[1].render(result.success)}
+              <Text type="secondary">{resultColumns[0].render(result.checked_at)}</Text>
+            </div>
+            {result.latency != null && <Text>延迟 {result.latency} ms</Text>}
+            {result.error && <Text type="danger">{result.error}</Text>}
+            {result.response && <Text>{result.response}</Text>}
+          </List.Item>}
+        /> : <Table columns={resultColumns} dataSource={results} loading={loadingResults}
+          rowKey="id" pagination={{ pageSize: 20 }} size="small" />}
+
       </Drawer>
     </div>
   );
